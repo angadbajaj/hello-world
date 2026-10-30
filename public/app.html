@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New quote - QuoteSmith</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="logo" href="/">Quote<span>Smith</span></a>
+      <a class="btn ghost" href="/app">New quote</a>
+    </header>
+
+    <form id="form" class="card">
+      <h2 style="margin-top:0">Describe the job</h2>
+      <div class="grid">
+        <div><label for="trade">Your trade</label><input id="trade" name="trade" placeholder="Plumber" /></div>
+        <div><label for="businessName">Business name</label><input id="businessName" name="businessName" placeholder="Smith Plumbing" /></div>
+        <div><label for="customerName">Customer</label><input id="customerName" name="customerName" placeholder="Jane Doe" /></div>
+        <div><label for="location">City / region</label><input id="location" name="location" placeholder="Austin, TX" /></div>
+      </div>
+      <div class="grid">
+        <div><label for="hourlyRate">Hourly rate</label><input id="hourlyRate" name="hourlyRate" type="number" min="0" step="1" placeholder="85" /></div>
+        <div><label for="markup">Materials markup %</label><input id="markup" name="markup" type="number" min="0" step="1" value="0" /></div>
+        <div><label for="taxRate">Tax %</label><input id="taxRate" name="taxRate" type="number" min="0" step="0.01" value="0" /></div>
+        <div><label for="currency">Currency</label>
+          <select id="currency" name="currency"><option>USD</option><option>CAD</option><option>GBP</option><option>EUR</option><option>AUD</option><option>NZD</option></select></div>
+      </div>
+      <label for="notes">Job notes (rough is fine)</label>
+      <textarea id="notes" name="notes" required placeholder="Bathroom: replace leaking toilet fill valve + wax ring, re-seat toilet. Vanity tap drips, replace cartridge (Moen). Approx 2.5 hrs. Parts ~$60."></textarea>
+      <details><summary class="muted">Your standard terms (optional)</summary>
+        <textarea id="terms" name="terms" style="min-height:80px" placeholder="Quote valid 14 days. 30% deposit. Balance due on completion."></textarea></details>
+      <p class="error" id="formError"></p>
+      <button class="btn" id="go" type="submit">Write my quote</button>
+    </form>
+
+    <div id="editor" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Review &amp; edit</h2><span class="status" id="status"></span>
+        </div>
+        <label for="title">Title</label><input id="title" />
+        <label for="summary">Summary</label><textarea id="summary" style="min-height:70px"></textarea>
+
+        <h3>Line items</h3>
+        <table class="items">
+          <thead><tr><th>Description</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Price</th><th class="num">Total</th><th></th></tr></thead>
+          <tbody id="items"></tbody>
+        </table>
+        <button class="btn ghost no-print" id="addItem" type="button" style="margin-top:8px">+ Add line</button>
+        <div class="grid" style="margin-top:12px">
+          <div><label for="taxRate2">Tax %</label><input id="taxRate2" type="number" min="0" step="0.01" /></div>
+          <div class="totals" id="totals"></div>
+        </div>
+
+        <div class="grid list-edit">
+          <div><label>Scope of work (one per line)</label><textarea data-list="scope_of_work"></textarea></div>
+          <div><label>Exclusions</label><textarea data-list="exclusions"></textarea></div>
+          <div><label>Assumptions</label><textarea data-list="assumptions"></textarea></div>
+          <div><label>Terms</label><textarea data-list="terms"></textarea></div>
+        </div>
+        <label for="duration">Estimated duration</label><input id="duration" />
+        <div id="questions"></div>
+
+        <p class="error" id="saveError"></p>
+        <div class="row">
+          <button class="btn" id="save" type="button">Save &amp; get customer link</button>
+          <button class="btn ghost" id="print" type="button">Print / PDF</button>
+        </div>
+        <div id="share" class="hidden" style="margin-top:16px">
+          <label for="shareUrl">Send this link to your customer</label>
+          <div class="row"><input id="shareUrl" readonly style="flex:1" /><button class="btn ghost" id="copy" type="button">Copy</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import { esc, money, totals, lineTotal } from "/quote-render.js";
+
+const $ = (id) => document.getElementById(id);
+let rec = null; // { id, editKey, input, quote, status }
+const CATS = ["labor", "materials", "equipment", "fee", "other"];
+
+// Remember the contractor's details between quotes.
+const PROFILE_FIELDS = ["trade", "businessName", "location", "hourlyRate", "markup", "taxRate", "currency", "terms"];
+try {
+  const p = JSON.parse(localStorage.getItem("qs_profile") || "{}");
+  for (const f of PROFILE_FIELDS) if (p[f] != null) $(f).value = p[f];
+} catch {}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("formError").textContent = "";
+  const body = Object.fromEntries(new FormData(e.target));
+  try { localStorage.setItem("qs_profile", JSON.stringify(Object.fromEntries(PROFILE_FIELDS.map((f) => [f, body[f]])))); } catch {}
+  $("go").disabled = true; $("go").textContent = "Writing your quote...";
+  try {
+    const r = await fetch("/api/quotes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    open(data);
+    history.replaceState(null, "", `/app?id=${data.id}&key=${data.editKey}`);
+  } catch (err) {
+    $("formError").textContent = err.message || "Something went wrong.";
+  } finally {
+    $("go").disabled = false; $("go").textContent = "Write my quote";
+  }
+});
+
+function open(data) {
+  rec = data;
+  const q = rec.quote;
+  $("form").classList.add("hidden");
+  $("editor").classList.remove("hidden");
+  $("title").value = q.title;
+  $("summary").value = q.summary;
+  $("duration").value = q.estimated_duration;
+  $("taxRate2").value = rec.input.taxRate || 0;
+  document.querySelectorAll("[data-list]").forEach((t) => (t.value = (q[t.dataset.list] || []).join("\n")));
+  $("questions").innerHTML = q.questions_for_client?.length
+    ? `<h3>Check with your customer</h3><ul>${q.questions_for_client.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  $("status").textContent = rec.status; $("status").className = `status ${rec.status}`;
+  if (rec.status !== "draft") showShare();
+  renderItems();
+}
+
+function renderItems() {
+  const cur = rec.input.currency || "USD";
+  $("items").innerHTML = rec.quote.line_items.map((li, i) => `
+    <tr data-i="${i}">
+      <td><input data-k="description" value="${esc(li.description)}" /></td>
+      <td><select data-k="category">${CATS.map((c) => `<option ${c === li.category ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+      <td class="num"><input data-k="quantity" type="number" step="any" value="${li.quantity}" style="width:70px" /></td>
+      <td><input data-k="unit" value="${esc(li.unit)}" style="width:70px" /></td>
+      <td class="num"><input data-k="unit_price" type="number" step="any" value="${li.unit_price}" style="width:90px" /></td>
+      <td class="num">${money(lineTotal(li, rec.input.markup), cur)}</td>
+      <td><button type="button" class="btn ghost no-print" data-del="${i}" aria-label="Remove line">×</button></td>
+    </tr>`).join("");
+  renderTotals();
+}
+
+function renderTotals() {
+  const cur = rec.input.currency || "USD";
+  const t = totals(rec.quote, { markup: rec.input.markup, taxRate: Number($("taxRate2").value) || 0 });
+  $("totals").innerHTML = `<div><span>Subtotal</span><span>${money(t.subtotal, cur)}</span></div>
+    <div><span>Tax</span><span>${money(t.tax, cur)}</span></div>
+    <div class="grand"><span>Total</span><span>${money(t.total, cur)}</span></div>`;
+}
+
+$("items").addEventListener("change", (e) => {
+  const tr = e.target.closest("tr"); const k = e.target.dataset.k;
+  if (!tr || !k) return;
+  const li = rec.quote.line_items[tr.dataset.i];
+  li[k] = ["quantity", "unit_price"].includes(k) ? Number(e.target.value) || 0 : e.target.value;
+  renderItems();
+});
+$("items").addEventListener("click", (e) => {
+  if (e.target.dataset.del == null) return;
+  rec.quote.line_items.splice(Number(e.target.dataset.del), 1); renderItems();
+});
+$("addItem").onclick = () => { rec.quote.line_items.push({ description: "", category: "labor", quantity: 1, unit: "hr", unit_price: 0 }); renderItems(); };
+$("taxRate2").oninput = renderTotals;
+$("print").onclick = () => window.print();
+
+function collect() {
+  const q = rec.quote;
+  q.title = $("title").value; q.summary = $("summary").value; q.estimated_duration = $("duration").value;
+  document.querySelectorAll("[data-list]").forEach((t) => (q[t.dataset.list] = t.value.split("\n").map((s) => s.trim()).filter(Boolean)));
+  return q;
+}
+
+$("save").onclick = async () => {
+  $("saveError").textContent = "";
+  try {
+    const r = await fetch(`/api/quotes/${rec.id}`, { method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: rec.editKey, quote: collect(), taxRate: Number($("taxRate2").value) || 0 }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    open(data);
+  } catch (err) { $("saveError").textContent = err.message; }
+};
+
+function showShare() {
+  $("share").classList.remove("hidden");
+  $("shareUrl").value = `${location.origin}/q/${rec.id}`;
+}
+$("copy").onclick = () => { $("shareUrl").select(); navigator.clipboard?.writeText($("shareUrl").value); $("copy").textContent = "Copied"; };
+
+// Reopen an existing quote from the URL.
+const params = new URLSearchParams(location.search);
+if (params.get("id") && params.get("key")) {
+  fetch(`/api/quotes/${params.get("id")}/edit?key=${encodeURIComponent(params.get("key"))}`)
+    .then((r) => (r.ok ? r.json() : null)).then((d) => d && open(d));
+}
+</script>
+</body>
+</html>
