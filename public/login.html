@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log in - QuoteSmith</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top"><a class="logo" href="/">Quote<span>Smith</span></a></header>
+    <form id="form" class="card" style="max-width:420px;margin:24px auto">
+      <h2 style="margin-top:0" id="heading">Create your free account</h2>
+      <p class="muted" id="sub">3 free quotes a month. No card needed.</p>
+      <label for="email">Email</label><input id="email" type="email" autocomplete="email" required />
+      <label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required />
+      <p class="error" id="err"></p>
+      <button class="btn" id="go" type="submit" style="width:100%">Create account</button>
+      <p class="muted" style="text-align:center"><a href="#" id="toggle">Already have an account? Log in</a></p>
+    </form>
+  </div>
+<script type="module">
+import { api, getMe } from "/nav.js";
+const $ = (id) => document.getElementById(id);
+const next = new URLSearchParams(location.search).get("next");
+const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+let mode = location.hash === "#login" ? "login" : "signup";
+
+function setMode(m) {
+  mode = m;
+  const login = m === "login";
+  $("heading").textContent = login ? "Welcome back" : "Create your free account";
+  $("sub").textContent = login ? "Log in to your quotes." : "3 free quotes a month. No card needed.";
+  $("go").textContent = login ? "Log in" : "Create account";
+  $("password").autocomplete = login ? "current-password" : "new-password";
+  $("toggle").textContent = login ? "New here? Create a free account" : "Already have an account? Log in";
+  $("err").textContent = "";
+}
+$("toggle").onclick = (e) => { e.preventDefault(); setMode(mode === "login" ? "signup" : "login"); };
+setMode(mode);
+
+getMe().then((me) => me.user && location.replace(dest));
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  $("go").disabled = true;
+  try {
+    await api(mode === "login" ? "/api/login" : "/api/signup", { method: "POST", body: { email: $("email").value, password: $("password").value } });
+    location.href = dest;
+  } catch (err) {
+    $("err").textContent = err.message;
+  } finally {
+    $("go").disabled = false;
+  }
+};
+</script>
+</body>
+</html>

@@ -33,7 +33,7 @@ function render(rec) {
   document.title = `${q.title} - ${input.businessName || "Quote"}`;
   $("root").innerHTML = `
     <div class="row" style="justify-content:space-between">
-      <div><strong>${esc(input.businessName || input.trade || "")}</strong><div class="muted">${esc(input.location || "")}</div></div>
+      <div><strong>${esc(input.businessName || input.trade || "")}</strong><div class="muted">${[input.location, input.contactPhone, input.contactEmail].filter(Boolean).map(esc).join(" · ")}</div></div>
       <span class="status ${rec.status}">${rec.status === "sent" ? "awaiting response" : rec.status}</span>
     </div>
     <h1 style="margin-bottom:4px">${esc(q.title)}</h1>
@@ -51,7 +51,9 @@ function render(rec) {
     ${listHtml("Scope of work", q.scope_of_work)}${listHtml("Not included", q.exclusions)}
     ${listHtml("Assumptions", q.assumptions)}${listHtml("Terms", q.terms)}
     ${rec.respondedAt ? `<p><strong>${rec.status === "accepted" ? "Accepted" : "Declined"}</strong> by ${esc(rec.signature)} on ${new Date(rec.respondedAt).toLocaleString()}</p>` : ""}`;
-  $("respond").classList.toggle("hidden", rec.status === "accepted" || rec.status === "declined");
+  $("respond").classList.toggle("hidden", rec.isOwner || rec.status === "accepted" || rec.status === "declined");
+  if (rec.isOwner) $("root").insertAdjacentHTML("afterbegin",
+    `<p class="notice no-print" style="margin-top:0">This is what your customer sees. <a href="/app?id=${rec.id}">Edit quote</a> · <a href="/dashboard">Dashboard</a></p>`);
 }
 
 async function respond(decision) {

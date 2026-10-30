@@ -10,7 +10,7 @@
   <div class="wrap">
     <header class="top">
       <a class="logo" href="/">Quote<span>Smith</span></a>
-      <a class="btn ghost" href="/app">New quote</a>
+      <nav id="nav"></nav>
     </header>
 
     <form id="form" class="card">
@@ -69,6 +69,19 @@
           <button class="btn" id="save" type="button">Save &amp; get customer link</button>
           <button class="btn ghost" id="print" type="button">Print / PDF</button>
         </div>
+        <div id="auth" class="notice hidden">
+          <strong>Create a free account to send this quote.</strong>
+          <p class="muted" style="margin:4px 0 0">Your quote is saved to your account and you can see when the customer opens it.</p>
+          <div class="grid">
+            <div><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" /></div>
+            <div><label for="authPass">Password (8+ characters)</label><input id="authPass" type="password" autocomplete="new-password" /></div>
+          </div>
+          <p class="error" id="authError"></p>
+          <div class="row">
+            <button class="btn" id="authGo" type="button">Create account &amp; send</button>
+            <a href="#" id="authToggle">I already have an account</a>
+          </div>
+        </div>
         <div id="share" class="hidden" style="margin-top:16px">
           <label for="shareUrl">Send this link to your customer</label>
           <div class="row"><input id="shareUrl" readonly style="flex:1" /><button class="btn ghost" id="copy" type="button">Copy</button></div>
@@ -79,17 +92,21 @@
 
 <script type="module">
 import { esc, money, totals, lineTotal } from "/quote-render.js";
+import { api, renderNav } from "/nav.js";
 
 const $ = (id) => document.getElementById(id);
 let rec = null; // { id, editKey, input, quote, status }
 const CATS = ["labor", "materials", "equipment", "fee", "other"];
 
-// Remember the contractor's details between quotes.
+// Prefill the contractor's details: account profile if logged in, otherwise what this browser remembers.
 const PROFILE_FIELDS = ["trade", "businessName", "location", "hourlyRate", "markup", "taxRate", "currency", "terms"];
-try {
-  const p = JSON.parse(localStorage.getItem("qs_profile") || "{}");
-  for (const f of PROFILE_FIELDS) if (p[f] != null) $(f).value = p[f];
-} catch {}
+const me = await renderNav();
+let profile = me.user?.profile;
+if (!profile || !Object.values(profile).some(Boolean)) {
+  try { profile = JSON.parse(localStorage.getItem("qs_profile") || "{}"); } catch { profile = {}; }
+}
+for (const f of PROFILE_FIELDS) if (profile[f] != null && profile[f] !== "") $(f).value = profile[f];
+const upgradeLink = ' <a href="/#pricing">See Pro</a>';
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -98,13 +115,13 @@ $("form").addEventListener("submit", async (e) => {
   try { localStorage.setItem("qs_profile", JSON.stringify(Object.fromEntries(PROFILE_FIELDS.map((f) => [f, body[f]])))); } catch {}
   $("go").disabled = true; $("go").textContent = "Writing your quote...";
   try {
-    const r = await fetch("/api/quotes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error);
+    const data = await api("/api/quotes", { method: "POST", body });
     open(data);
-    history.replaceState(null, "", `/app?id=${data.id}&key=${data.editKey}`);
+    history.replaceState(null, "", data.userId ? `/app?id=${data.id}` : `/app?id=${data.id}&key=${data.editKey}`);
   } catch (err) {
-    $("formError").textContent = err.message || "Something went wrong.";
+    $("formError").textContent = err.message;
+    if (err.upgrade) $("formError").innerHTML += upgradeLink;
+    else if (err.status === 429 && !me.user) $("formError").innerHTML += ' <a href="/login?next=/app">Sign up free</a>';
   } finally {
     $("go").disabled = false; $("go").textContent = "Write my quote";
   }
@@ -172,15 +189,50 @@ function collect() {
   return q;
 }
 
-$("save").onclick = async () => {
+async function save() {
   $("saveError").textContent = "";
+  if (!me.user) { $("auth").classList.remove("hidden"); $("authEmail").focus(); return; }
   try {
-    const r = await fetch(`/api/quotes/${rec.id}`, { method: "PUT", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key: rec.editKey, quote: collect(), taxRate: Number($("taxRate2").value) || 0 }) });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error);
+    const data = await api(`/api/quotes/${rec.id}`, { method: "PUT",
+      body: { key: rec.editKey, quote: collect(), taxRate: Number($("taxRate2").value) || 0 } });
+    $("auth").classList.add("hidden");
     open(data);
-  } catch (err) { $("saveError").textContent = err.message; }
+    history.replaceState(null, "", `/app?id=${data.id}`);
+  } catch (err) {
+    if (err.status === 401) { $("auth").classList.remove("hidden"); $("authEmail").focus(); return; }
+    $("saveError").textContent = err.message;
+    if (err.upgrade) $("saveError").innerHTML += upgradeLink;
+  }
+}
+$("save").onclick = save;
+
+let authMode = "signup";
+$("authToggle").onclick = (e) => {
+  e.preventDefault();
+  authMode = authMode === "signup" ? "login" : "signup";
+  $("authGo").textContent = authMode === "signup" ? "Create account & send" : "Log in & send";
+  $("authToggle").textContent = authMode === "signup" ? "I already have an account" : "New here? Create an account";
+  $("authPass").autocomplete = authMode === "signup" ? "new-password" : "current-password";
+};
+$("authGo").onclick = async () => {
+  $("authError").textContent = "";
+  $("authGo").disabled = true;
+  try {
+    const { user } = await api(authMode === "signup" ? "/api/signup" : "/api/login", { method: "POST",
+      body: { email: $("authEmail").value, password: $("authPass").value } });
+    // Carry the details they just typed into their new profile.
+    if (authMode === "signup") {
+      const p = Object.fromEntries(PROFILE_FIELDS.map((f) => [f, rec.input[f] ?? ""]));
+      await api("/api/me/profile", { method: "PUT", body: p }).catch(() => {});
+    }
+    me.user = user;
+    renderNav(me);
+    await save();
+  } catch (err) {
+    $("authError").textContent = err.message;
+  } finally {
+    $("authGo").disabled = false;
+  }
 };
 
 function showShare() {
@@ -191,8 +243,8 @@ $("copy").onclick = () => { $("shareUrl").select(); navigator.clipboard?.writeTe
 
 // Reopen an existing quote from the URL.
 const params = new URLSearchParams(location.search);
-if (params.get("id") && params.get("key")) {
-  fetch(`/api/quotes/${params.get("id")}/edit?key=${encodeURIComponent(params.get("key"))}`)
+if (params.get("id")) {
+  fetch(`/api/quotes/${params.get("id")}/edit?key=${encodeURIComponent(params.get("key") || "")}`)
     .then((r) => (r.ok ? r.json() : null)).then((d) => d && open(d));
 }
 </script>

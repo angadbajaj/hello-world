@@ -53,3 +53,17 @@ footer { padding: 32px 0; color: var(--muted); font-size: .9rem; }
   body { background: #fff; }
   .card { border: 0; padding: 0; }
 }
+.status.viewed { background: #fff3bf; color: #8a6100; }
+.status.sent { background: #e7f5ff; color: #1864ab; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+.stats div { display: flex; flex-direction: column; background: var(--bg); border-radius: 8px; padding: 12px; }
+.stats strong { font-size: 1.3rem; }
+.notice { background: #fff4e6; border: 1px solid #ffd8a8; border-radius: 8px; padding: 14px; margin-top: 12px; }
+@media (max-width: 640px) {
+  table.dash tr { grid-template-columns: 1fr auto; }
+  table.dash td:nth-child(2) { display: none; }
+}
+header.top nav { flex-wrap: nowrap; }
+@media (max-width: 640px) {
+  header.top .btn { padding: 8px 12px; font-size: .9rem; }
+}

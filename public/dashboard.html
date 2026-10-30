@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - QuoteSmith</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top"><a class="logo" href="/">Quote<span>Smith</span></a><nav id="nav"></nav></header>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Your quotes</h2>
+        <div id="usage" class="muted"></div>
+      </div>
+      <div id="stats" class="stats"></div>
+      <div id="list"><p class="muted">Loading...</p></div>
+    </div>
+
+    <form id="profile" class="card" style="margin-top:16px">
+      <h2 style="margin-top:0">Business profile</h2>
+      <p class="muted">These details are filled in on every new quote.</p>
+      <div class="grid">
+        <div><label for="businessName">Business name</label><input id="businessName" /></div>
+        <div><label for="trade">Trade</label><input id="trade" /></div>
+        <div><label for="location">City / region</label><input id="location" /></div>
+        <div><label for="phone">Phone</label><input id="phone" type="tel" /></div>
+        <div><label for="email">Business email</label><input id="email" type="email" /></div>
+      </div>
+      <div class="grid">
+        <div><label for="hourlyRate">Hourly rate</label><input id="hourlyRate" type="number" min="0" step="1" /></div>
+        <div><label for="markup">Materials markup %</label><input id="markup" type="number" min="0" step="1" /></div>
+        <div><label for="taxRate">Tax %</label><input id="taxRate" type="number" min="0" step="0.01" /></div>
+        <div><label for="currency">Currency</label>
+          <select id="currency"><option>USD</option><option>CAD</option><option>GBP</option><option>EUR</option><option>AUD</option><option>NZD</option></select></div>
+      </div>
+      <label for="terms">Standard terms</label><textarea id="terms" style="min-height:80px"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" type="submit">Save profile</button><span id="saved" class="muted"></span>
+      </div>
+    </form>
+
+    <p class="muted" style="margin-top:16px"><span id="who"></span> · <a href="#" id="logout">Log out</a></p>
+  </div>
+<script type="module">
+import { api, renderNav, getMe, logout } from "/nav.js";
+import { esc, money, totals } from "/quote-render.js";
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["businessName", "trade", "location", "phone", "email", "hourlyRate", "markup", "taxRate", "currency", "terms"];
+
+const me = await getMe();
+if (!me.user) location.replace("/login?next=/dashboard");
+renderNav(me);
+$("who").textContent = `Signed in as ${me.user.email} (${me.user.plan} plan)`;
+$("logout").onclick = (e) => { e.preventDefault(); logout(); };
+for (const f of FIELDS) if (me.user.profile[f] != null) $(f).value = me.user.profile[f];
+
+const ago = (iso) => {
+  if (!iso) return "";
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (m < 60) return `${Math.max(m, 1)}m ago`;
+  if (m < 1440) return `${Math.round(m / 60)}h ago`;
+  return new Date(iso).toLocaleDateString();
+};
+
+function statusOf(q) {
+  if (q.status === "sent" && q.viewedAt) return { cls: "viewed", label: `viewed ${ago(q.viewedAt)}` };
+  if (q.status === "accepted" || q.status === "declined") return { cls: q.status, label: `${q.status} ${ago(q.respondedAt)}` };
+  return { cls: q.status, label: q.status };
+}
+
+const { quotes, usage } = await api("/api/quotes");
+$("usage").textContent = usage.limit === null ? "Unlimited quotes" : `${usage.used} of ${usage.limit} free quotes used this month`;
+if (usage.limit !== null && usage.used >= usage.limit) $("usage").innerHTML += ` · <a href="/#pricing">Upgrade</a>`;
+
+const accepted = quotes.filter((q) => q.status === "accepted");
+const sent = quotes.filter((q) => q.status !== "draft");
+const valueOf = (q) => totals(q.quote, q.input).total;
+const cur = me.user.profile.currency || "USD";
+if (sent.length) {
+  $("stats").innerHTML = `
+    <div><strong>${sent.length}</strong><span class="muted">sent</span></div>
+    <div><strong>${sent.length ? Math.round((accepted.length / sent.length) * 100) : 0}%</strong><span class="muted">win rate</span></div>
+    <div><strong>${money(accepted.reduce((s, q) => s + valueOf(q), 0), cur)}</strong><span class="muted">won</span></div>`;
+}
+
+$("list").innerHTML = quotes.length
+  ? `<table class="items dash"><thead><tr><th>Quote</th><th>Customer</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>
+    ${quotes.map((q) => { const s = statusOf(q); return `<tr>
+      <td><a href="/app?id=${q.id}">${esc(q.quote.title)}</a><div class="muted" style="font-size:.85rem">${new Date(q.createdAt).toLocaleDateString()}</div></td>
+      <td>${esc(q.input.customerName || "-")}</td>
+      <td class="num">${money(valueOf(q), q.input.currency || "USD")}</td>
+      <td><span class="status ${s.cls}">${esc(s.label)}</span></td>
+      <td>${q.status !== "draft" ? `<a href="/q/${q.id}">Customer view</a>` : ""}</td></tr>`; }).join("")}
+    </tbody></table>`
+  : `<p class="muted">No quotes yet. <a href="/app">Write your first one</a>, it takes about a minute.</p>`;
+
+$("profile").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/me/profile", { method: "PUT", body: Object.fromEntries(FIELDS.map((f) => [f, $(f).value])) });
+    $("saved").textContent = "Saved";
+  } catch (err) { $("saved").textContent = err.message; }
+};
+</script>
+</body>
+</html>

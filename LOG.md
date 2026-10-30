@@ -18,3 +18,20 @@ Each nightly session appends an entry: what shipped, what was learned, what's ne
 Totals labels sit too close together in the mobile editor.
 
 **Next (Day 2):** accounts + dashboard + free-tier enforcement.
+
+## 2026-10-30 (night): Day 2, accounts, dashboard, free tier
+**Shipped**
+- Email + password accounts (scrypt hashes, 30-day HttpOnly session cookies), login/signup page, logout.
+- Storage moved from a JSON file to SQLite using Node's built-in `node:sqlite`, so there are no native dependencies to deploy.
+- Dashboard: every quote with its live status (sent → viewed → accepted/declined), sent count, win rate, and $ won.
+- Saved business profile (name, trade, rates, markup, tax, terms, phone, email). It fills in every new quote, and the phone/email appear on the customer's quote.
+- Free-tier enforcement on the server: 3 quotes/month on the free plan, with a 402 + "See Pro" prompt after that. Pro/Crew are unlimited (billing sets the plan on Day 3).
+- Signup funnel: try without an account (2/day per IP), and sign up inline when you hit "send". The draft is claimed into the new account and the details typed so far become the profile.
+- When the owner opens their own customer link, it doesn't count as "viewed" and they get an edit/dashboard banner instead of the accept buttons.
+- Tests: API integration tests (signup/claim flow, monthly cap, cross-account access, no secrets in the customer view) plus the totals tests. 5/5 pass. Playwright run of the full anonymous → signup → send → customer accepts → dashboard → logout/login flow at 390px and 1280px: no console errors, no horizontal scroll.
+
+**Learned**
+- The win-rate and "$ won" stats are the most sales-worthy screen so far. They're a concrete ROI story for the Pro upsell.
+- Password reset needs an email provider. That's on the founder-decisions list; it's deferred, not forgotten.
+
+**Next (Day 3):** Stripe billing (Checkout + Customer Portal + webhook → plan), wired to env vars so it runs when keys are added.
