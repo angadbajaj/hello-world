@@ -35,3 +35,19 @@ Totals labels sit too close together in the mobile editor.
 - Password reset needs an email provider. That's on the founder-decisions list; it's deferred, not forgotten.
 
 **Next (Day 3):** Stripe billing (Checkout + Customer Portal + webhook → plan), wired to env vars so it runs when keys are added.
+
+## 2026-10-31: Day 3, billing
+**Shipped**
+- Stripe billing (`src/billing.js`): Checkout for subscriptions, Customer Portal, and a signature-verified webhook that maps subscription state to the plan. `active`/`trialing` → paid plan; `past_due` → keeps access but shows "update your card"; canceled → free.
+- An existing subscriber who clicks "upgrade" goes to the portal instead of a second checkout, so nobody gets double-billed.
+- Dashboard Plan card: current plan/status, trial or upgrade offer, "Manage billing & invoices". Returning from Stripe polls briefly so the plan flips even if the webhook arrives after the redirect.
+- Landing pricing buttons: "Start free" → app; "Go Pro" → signup/login → straight into checkout. Crew is "coming soon".
+- Everything is driven by env vars. With no keys set, the app works and paid plans read "coming soon".
+- Tests: 9/9 pass. New billing tests run against a local fake Stripe API: checkout params (mode, customer, price, metadata), webhook upgrade → unlimited quotes, past_due grace, cancel → free, bad signature rejected, endpoints closed when unconfigured. The Playwright pricing → signup → checkout redirect → webhook → "You're all set" flow passes at 390px and 1280px with no console errors.
+
+**Fixed:** the dashboard kept running after redirecting a logged-out user to login, which caused a console error.
+
+**Learned**
+- Pro is now buyable, but its card promises a logo, PDF export and open/accept alerts that don't exist yet. Day 4 has to land before any real launch.
+
+**Next (Day 4):** logo upload, quote numbers, PDF download, deposit request, and email alerts on view/accept (pluggable provider, logs to console until configured).

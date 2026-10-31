@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { generateQuote, aiEnabled, QuoteSchema } from "./ai.js";
 import * as store from "./store.js";
+import * as billing from "./billing.js";
 
 const app = express();
 const PUBLIC = path.resolve("public");
@@ -9,6 +10,18 @@ const PROD = process.env.NODE_ENV === "production";
 const PLAN_LIMITS = { free: Number(process.env.FREE_QUOTES_PER_MONTH || 3), pro: Infinity, crew: Infinity };
 
 app.set("trust proxy", 1);
+
+// Stripe needs the raw body to verify the signature, so this route comes before the JSON parser.
+app.post("/api/stripe/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res) => {
+  if (!billing.billingStatus().enabled || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).json({ error: "Billing not configured" });
+  try {
+    res.json({ received: billing.handleWebhook(req.body, req.headers["stripe-signature"]) });
+  } catch (err) {
+    console.error("stripe webhook:", err.message);
+    res.status(400).json({ error: "Invalid webhook" });
+  }
+});
+
 app.use(express.json({ limit: "200kb" }));
 app.use(express.static(PUBLIC, { extensions: ["html"] }));
 
@@ -88,7 +101,7 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/me", (req, res) => res.json(req.user ? { user: req.user, usage: usage(req.user) } : { user: null }));
+app.get("/api/me", (req, res) => res.json(req.user ? { user: req.user, usage: usage(req.user), billing: billing.billingStatus() } : { user: null }));
 
 const PROFILE_FIELDS = { trade: 60, businessName: 120, location: 120, currency: 8, terms: 2000, phone: 40, email: 200 };
 const PROFILE_NUMBERS = ["hourlyRate", "markup", "taxRate"];
@@ -102,7 +115,35 @@ app.put("/api/me/profile", requireUser, (req, res) => {
 
 // ---- quotes (contractor side) ----
 
-app.get("/api/health", (req, res) => res.json({ ok: true, ai: aiEnabled() }));
+app.get("/api/health", (req, res) => res.json({ ok: true, ai: aiEnabled(), billing: billing.billingStatus().enabled }));
+
+// ---- billing ----
+
+const origin = (req) => process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+
+app.post("/api/billing/checkout", requireUser, async (req, res) => {
+  const plan = req.body?.plan;
+  if (!billing.canCheckout(plan)) return res.status(503).json({ error: "Upgrades aren't available yet. Check back soon." });
+  if (req.user.plan === plan) return res.status(409).json({ error: `You're already on ${plan}.` });
+  try {
+    // Existing subscribers switch plans in the portal so they aren't billed twice.
+    const switching = req.user.plan !== "free" && req.user.stripeCustomerId;
+    res.json({ url: switching ? await billing.createPortal(req.user, origin(req)) : await billing.createCheckout(req.user, plan, origin(req)) });
+  } catch (err) {
+    console.error("checkout:", err.message);
+    res.status(502).json({ error: "Couldn't start checkout. Please try again." });
+  }
+});
+
+app.post("/api/billing/portal", requireUser, async (req, res) => {
+  if (!billing.billingStatus().enabled || !req.user.stripeCustomerId) return res.status(400).json({ error: "No billing account yet." });
+  try {
+    res.json({ url: await billing.createPortal(req.user, origin(req)) });
+  } catch (err) {
+    console.error("portal:", err.message);
+    res.status(502).json({ error: "Couldn't open billing. Please try again." });
+  }
+});
 
 app.get("/api/quotes", requireUser, (req, res) => {
   res.json({ quotes: store.listQuotes(req.user.id), usage: usage(req.user) });

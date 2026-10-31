@@ -106,7 +106,7 @@ if (!profile || !Object.values(profile).some(Boolean)) {
   try { profile = JSON.parse(localStorage.getItem("qs_profile") || "{}"); } catch { profile = {}; }
 }
 for (const f of PROFILE_FIELDS) if (profile[f] != null && profile[f] !== "") $(f).value = profile[f];
-const upgradeLink = ' <a href="/#pricing">See Pro</a>';
+const upgradeLink = ' <a href="/dashboard?upgrade=pro">Go Pro for unlimited quotes</a>';
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();

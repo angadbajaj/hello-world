@@ -19,6 +19,12 @@
       <div id="list"><p class="muted">Loading...</p></div>
     </div>
 
+    <div id="plan" class="card" style="margin-top:16px">
+      <h2 style="margin-top:0">Plan</h2>
+      <div id="planBody" class="muted">Loading...</div>
+      <p class="error" id="planError"></p>
+    </div>
+
     <form id="profile" class="card" style="margin-top:16px">
       <h2 style="margin-top:0">Business profile</h2>
       <p class="muted">These details are filled in on every new quote.</p>
@@ -51,7 +57,10 @@ const $ = (id) => document.getElementById(id);
 const FIELDS = ["businessName", "trade", "location", "phone", "email", "hourlyRate", "markup", "taxRate", "currency", "terms"];
 
 const me = await getMe();
-if (!me.user) location.replace("/login?next=/dashboard");
+if (!me.user) {
+  location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+  await new Promise(() => {}); // stop here while the browser navigates away
+}
 renderNav(me);
 $("who").textContent = `Signed in as ${me.user.email} (${me.user.plan} plan)`;
 $("logout").onclick = (e) => { e.preventDefault(); logout(); };
@@ -73,7 +82,7 @@ function statusOf(q) {
 
 const { quotes, usage } = await api("/api/quotes");
 $("usage").textContent = usage.limit === null ? "Unlimited quotes" : `${usage.used} of ${usage.limit} free quotes used this month`;
-if (usage.limit !== null && usage.used >= usage.limit) $("usage").innerHTML += ` · <a href="/#pricing">Upgrade</a>`;
+if (usage.limit !== null && usage.used >= usage.limit) $("usage").innerHTML += ` · <a href="#plan">Upgrade</a>`;
 
 const accepted = quotes.filter((q) => q.status === "accepted");
 const sent = quotes.filter((q) => q.status !== "draft");
@@ -96,6 +105,66 @@ $("list").innerHTML = quotes.length
       <td>${q.status !== "draft" ? `<a href="/q/${q.id}">Customer view</a>` : ""}</td></tr>`; }).join("")}
     </tbody></table>`
   : `<p class="muted">No quotes yet. <a href="/app">Write your first one</a>, it takes about a minute.</p>`;
+
+// ---- plan & billing ----
+const PLANS = {
+  pro: { name: "Pro", price: "$19/mo", pitch: "Unlimited quotes, your logo, PDF export, open and accept alerts." },
+  crew: { name: "Crew", price: "$49/mo", pitch: "Up to 5 users and a shared price book." },
+};
+const params = new URLSearchParams(location.search);
+
+function renderPlan(user, billing) {
+  const plan = user.plan;
+  const status = user.planStatus && user.planStatus !== "active" ? ` (${user.planStatus.replace("_", " ")})` : "";
+  let html = `<p>You're on the <strong>${plan === "free" ? "Free" : PLANS[plan]?.name || plan}</strong> plan${esc(status)}.</p>`;
+  if (user.planStatus === "past_due") html += `<p class="notice">Your last payment failed. Update your card to keep Pro.</p>`;
+  if (plan === "free") {
+    const offers = (billing?.plans || []).filter((p) => PLANS[p]);
+    html += offers.length
+      ? `<div class="features">${offers.map((p) => `<div class="card plan ${p === "pro" ? "featured" : ""}">
+          <h3 style="margin:0">${PLANS[p].name} <span class="muted">${PLANS[p].price}</span></h3>
+          <p class="muted">${PLANS[p].pitch}</p>
+          <button class="btn" data-upgrade="${p}">${billing.trialDays ? `Start ${billing.trialDays}-day free trial` : `Upgrade to ${PLANS[p].name}`}</button></div>`).join("")}</div>`
+      : `<p class="muted">Paid plans are coming soon.</p>`;
+  }
+  if (user.stripeCustomerId && billing?.enabled) html += `<p><button class="btn ghost" id="portal">Manage billing &amp; invoices</button></p>`;
+  $("planBody").innerHTML = html;
+  $("planBody").classList.remove("muted");
+}
+
+async function go(url, body) {
+  $("planError").textContent = "";
+  try {
+    const { url: dest } = await api(url, { method: "POST", body });
+    location.href = dest;
+  } catch (err) { $("planError").textContent = err.message; }
+}
+$("planBody").addEventListener("click", (e) => {
+  if (e.target.dataset.upgrade) { e.target.disabled = true; go("/api/billing/checkout", { plan: e.target.dataset.upgrade }); }
+  if (e.target.id === "portal") go("/api/billing/portal");
+});
+renderPlan(me.user, me.billing);
+
+// Arriving from the pricing page: go straight to checkout.
+const wanted = params.get("upgrade");
+if (wanted && me.user.plan === "free" && me.billing?.plans.includes(wanted)) go("/api/billing/checkout", { plan: wanted });
+else if (wanted) $("plan").scrollIntoView();
+
+// Back from Stripe: the webhook may land a moment after the redirect, so poll briefly.
+if (params.get("upgraded")) {
+  $("planBody").insertAdjacentHTML("beforebegin", `<p class="notice" id="thanks">Thanks! Activating your plan...</p>`);
+  for (let i = 0; i < 10; i++) {
+    const fresh = await getMe();
+    if (fresh.user?.plan !== "free") {
+      $("thanks").textContent = "You're all set. Unlimited quotes are on.";
+      renderPlan(fresh.user, fresh.billing);
+      $("usage").textContent = "Unlimited quotes";
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  history.replaceState(null, "", "/dashboard");
+}
 
 $("profile").onsubmit = async (e) => {
   e.preventDefault();

@@ -20,7 +20,8 @@ gets a link they can accept on their phone.
 - [x] **Day 1 (Oct 30):** MVP. Notes to AI quote, editor, totals and tax, shareable customer link, accept/decline with name, print to PDF, landing page with pricing.
 - [x] **Day 2 (Oct 30, night):** Accounts (email + password, sessions), a dashboard with status (sent/viewed/accepted) and win-rate stats, server-side enforcement of 3 free quotes/month, and a saved business profile. Also pulled the SQLite move forward from Day 7 (built-in `node:sqlite`, no native deps) because accounts needed real tables.
   - *Funnel decision:* anyone can generate a quote with no signup (2/day per IP), but sending it to a customer requires a free account. They get value first and sign up at the moment it matters.
-- [ ] **Day 3:** Billing. Stripe Checkout and Customer Portal for Pro, a webhook that sets the plan, and plan gating. Configured by env vars; the founder adds keys.
+- [x] **Day 3 (Oct 31):** Billing. Stripe Checkout + Customer Portal, a signed webhook that sets the plan (past_due keeps access as a grace period; cancel drops to free), an optional free trial (`STRIPE_TRIAL_DAYS`), a Plan card on the dashboard, and pricing buttons that go signup → checkout in one path.
+  - *Decision:* Crew is marked "coming soon" and can't be bought until its features exist; selling features we don't have creates refunds and churn. **Day 4 is now launch-blocking**, because the Pro card promises a logo, PDF export and open/accept alerts.
 - [ ] **Day 4:** Look professional. Logo upload, quote numbers, real PDF download, "request deposit" via a Stripe Payment Link, and email notifications on view/accept (pluggable provider).
 - [ ] **Day 5:** Quality. Build an eval set of ~20 real-world job notes across trades, tune the prompt, add a price book (my saved items/rates the AI must reuse), and add photo input (snap the job, AI drafts the notes).
 - [ ] **Day 6:** Distribution assets (no outreach). SEO pages per trade (`/plumber-quote-template`, etc.), a free no-login quote generator as the lead magnet, and deploy config (Dockerfile + Render/Fly guide).
@@ -33,5 +34,7 @@ gets a link they can accept on their phone.
 
 ## Things only the founder can do
 - Get an Anthropic API key (`ANTHROPIC_API_KEY`).
-- Choose hosting and a domain, and create a Stripe account (when Day 3 lands).
+- Choose hosting and a domain.
+- Create a Stripe account plus the Pro product/price and webhook (steps in README → Setting up billing). Decide on a free-trial length (my suggestion: 14 days).
+- Pick an email provider (Resend or Postmark) for alerts and password reset.
 - Outreach and launch, when you decide. Nothing has been posted or sent anywhere.

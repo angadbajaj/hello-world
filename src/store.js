@@ -41,6 +41,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS quotes_user ON quotes(user_id, created_at);
 `);
 
+// Additive migrations for databases created by earlier versions.
+const userCols = new Set(db.prepare("PRAGMA table_info(users)").all().map((c) => c.name));
+for (const [col, type] of [["stripe_customer_id", "TEXT"], ["stripe_subscription_id", "TEXT"], ["plan_status", "TEXT"]]) {
+  if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+}
+
 const now = () => new Date().toISOString();
 const newId = (bytes) => crypto.randomBytes(bytes).toString("base64url");
 
@@ -60,7 +66,10 @@ function checkPassword(password, stored) {
 
 function toUser(row) {
   if (!row) return null;
-  return { id: row.id, email: row.email, plan: row.plan, profile: JSON.parse(row.profile), createdAt: row.created_at };
+  return {
+    id: row.id, email: row.email, plan: row.plan, planStatus: row.plan_status, profile: JSON.parse(row.profile),
+    stripeCustomerId: row.stripe_customer_id, createdAt: row.created_at,
+  };
 }
 
 export function createUser(email, password) {
@@ -90,8 +99,17 @@ export function updateProfile(id, profile) {
   return getUser(id);
 }
 
-export function setPlan(id, plan) {
-  db.prepare("UPDATE users SET plan = ? WHERE id = ?").run(plan, id);
+export function setStripeCustomer(id, customerId) {
+  db.prepare("UPDATE users SET stripe_customer_id = ? WHERE id = ?").run(customerId, id);
+}
+
+export function userByStripeCustomer(customerId) {
+  return toUser(db.prepare("SELECT * FROM users WHERE stripe_customer_id = ?").get(customerId));
+}
+
+export function setSubscription(id, { plan, status, customerId, subscriptionId }) {
+  db.prepare(`UPDATE users SET plan = ?, plan_status = ?, stripe_customer_id = COALESCE(?, stripe_customer_id),
+    stripe_subscription_id = COALESCE(?, stripe_subscription_id) WHERE id = ?`).run(plan, status, customerId ?? null, subscriptionId ?? null, id);
 }
 
 const SESSION_DAYS = 30;
