@@ -20,3 +20,10 @@ test("tax applies to the marked-up subtotal", () => {
   assert.equal(t.tax, 30);
   assert.equal(t.total, 330);
 });
+
+test("customers see marked-up unit prices that multiply out to the line total", async () => {
+  const { unitPrice } = await import("../public/quote-render.js");
+  const li = { category: "materials", quantity: 3, unit_price: 10 };
+  assert.equal(unitPrice(li, 20), 12);
+  assert.equal(lineTotal(li, 20), 36);
+});

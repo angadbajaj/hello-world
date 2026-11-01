@@ -67,3 +67,4 @@ header.top nav { flex-wrap: nowrap; }
 @media (max-width: 640px) {
   header.top .btn { padding: 8px 12px; font-size: .9rem; }
 }
+.logo-img { display: block; max-height: 60px; max-width: 180px; margin-bottom: 8px; }

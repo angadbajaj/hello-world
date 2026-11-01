@@ -26,6 +26,8 @@ If you leave out the key, it runs in demo mode with a sample quote.
 | `STRIPE_PRICE_PRO` / `STRIPE_PRICE_CREW` | none | Stripe Price IDs (a plan without a price can't be bought) |
 | `STRIPE_WEBHOOK_SECRET` | none | Signing secret for `/api/stripe/webhook` |
 | `STRIPE_TRIAL_DAYS` | `0` | Free trial length on new subscriptions |
+| `RESEND_API_KEY` | none | Sends contractor email alerts via Resend (otherwise written to `DATA_DIR/outbox.log`) |
+| `EMAIL_FROM` | `QuoteSmith <alerts@quotesmith.app>` | Sender address (must be a domain verified in Resend) |
 
 Requires Node 22.13+ (uses the built-in `node:sqlite`). Data is stored in `DATA_DIR/quotesmith.db`.
 
@@ -43,6 +45,8 @@ Until these are set, the app runs normally and paid plans show as "coming soon".
 - `src/ai.js`: prompt, schema, Claude call
 - `src/store.js`: SQLite storage (users, sessions, quotes)
 - `src/billing.js`: Stripe Checkout, Customer Portal, webhook → plan
+- `src/pdf.js`: server-side quote PDFs (pdfkit)
+- `src/notify.js`: contractor email alerts (Resend, or a local outbox file)
 - `public/`: landing page (`index.html`), quote builder (`app.html`), customer view (`quote.html`), `login.html`, `dashboard.html`
 - `test/`: `npm test` runs the unit tests plus API tests against a real server
 

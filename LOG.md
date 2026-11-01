@@ -51,3 +51,23 @@ Totals labels sit too close together in the mobile editor.
 - Pro is now buyable, but its card promises a logo, PDF export and open/accept alerts that don't exist yet. Day 4 has to land before any real launch.
 
 **Next (Day 4):** logo upload, quote numbers, PDF download, deposit request, and email alerts on view/accept (pluggable provider, logs to console until configured).
+
+## 2026-11-01: Day 4, professional output (the Pro promises)
+**Shipped**
+- **Logo** (Pro): upload on the dashboard (PNG/JPEG only, resized in the browser, SVG refused because it can carry scripts). Shown on the customer page and the PDF while the account is on a paid plan.
+- **Quote numbers**: per-account sequence starting at #1001, assigned at creation or when an anonymous draft is claimed. Shown in the editor, dashboard, customer page and PDF.
+- **PDF download** (`/q/:id/pdf`, pdfkit): letter-size quote with logo, business contact, line items, totals, deposit, scope/exclusions/terms, and the acceptance stamp. Free PDFs carry a small "Made with QuoteSmith" footer.
+- **Deposits**: profile has a deposit % and payment link (https only). The customer page and PDF show the deposit due. After acceptance the customer gets a "Pay deposit" button. The deposit is also passed to the AI so the written terms match.
+- **Email alerts** (`src/notify.js`): accept/decline (with the customer's note) for everyone; "Jane just opened your quote" for Pro, only on the first customer open and never for the owner's own preview. Sends via Resend when keyed, otherwise to `data/outbox.log`.
+- Pricing copy now matches what exists: Free includes PDF + accept emails; Pro is unlimited + logo + no branding + open alerts.
+- Tests: 15/15 pass (new: numbering incl. claimed drafts, deposit/link validation, logo gating/validation/serving, PDF access rules, alert rules). Playwright run of Pro logo upload → profile deposit → quote → PDF → customer opens (logo renders, no branding) → accepts → "Pay deposit": passes at 390px and 1280px with no console errors.
+
+**Fixed**
+- Materials showed their pre-markup unit price next to a marked-up total ("1 × $18.50 = $21.28"). Customers now see the marked-up unit price, on the web and in the PDF.
+- The branded PDF footer pushed onto a blank second page.
+
+**Learned**
+- Every Pro claim on the pricing page now exists. Nothing is advertised that isn't built.
+- The "Made with QuoteSmith" footer on free quotes is our only zero-cost acquisition channel. Keep it tasteful, and keep it.
+
+**Next (Day 5):** quote quality. Build an eval set of real-world job notes across trades, tune the prompt, add a price book the AI reuses, and photo input.

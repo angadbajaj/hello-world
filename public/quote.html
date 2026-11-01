@@ -17,40 +17,50 @@
       <div class="row">
         <button class="btn" id="accept">Accept quote</button>
         <button class="btn ghost" id="decline">Decline</button>
-        <button class="btn ghost" onclick="window.print()">Print / PDF</button>
       </div>
     </div>
-    <footer>Quote made with <a href="/">QuoteSmith</a></footer>
+    <div class="row no-print" style="margin-top:16px">
+      <a class="btn ghost" id="pdf" href="#">Download PDF</a>
+      <button class="btn ghost" onclick="window.print()">Print</button>
+    </div>
+    <footer id="brand" class="hidden">Quote made with <a href="/">QuoteSmith</a></footer>
   </div>
 <script type="module">
-import { esc, money, totals, lineTotal, listHtml } from "/quote-render.js";
+import { esc, money, totals, lineTotal, unitPrice, listHtml } from "/quote-render.js";
 const id = location.pathname.split("/").pop();
 const $ = (x) => document.getElementById(x);
 
 function render(rec) {
   const { quote: q, input } = rec; const cur = input.currency || "USD";
   const t = totals(q, { markup: input.markup, taxRate: input.taxRate });
+  const deposit = input.depositPercent ? (t.total * input.depositPercent) / 100 : 0;
   document.title = `${q.title} - ${input.businessName || "Quote"}`;
   $("root").innerHTML = `
     <div class="row" style="justify-content:space-between">
-      <div><strong>${esc(input.businessName || input.trade || "")}</strong><div class="muted">${[input.location, input.contactPhone, input.contactEmail].filter(Boolean).map(esc).join(" · ")}</div></div>
+      <div>${rec.hasLogo ? `<img src="/api/q/${esc(rec.id)}/logo" alt="" class="logo-img" />` : ""}<strong>${esc(input.businessName || input.trade || "")}</strong><div class="muted">${[input.location, input.contactPhone, input.contactEmail].filter(Boolean).map(esc).join(" · ")}</div></div>
       <span class="status ${rec.status}">${rec.status === "sent" ? "awaiting response" : rec.status}</span>
     </div>
     <h1 style="margin-bottom:4px">${esc(q.title)}</h1>
-    <p class="muted">${input.customerName ? `Prepared for ${esc(input.customerName)} · ` : ""}${new Date(rec.updatedAt || rec.createdAt).toLocaleDateString()}</p>
+    <p class="muted">${rec.number ? `Quote #${rec.number} · ` : ""}${input.customerName ? `Prepared for ${esc(input.customerName)} · ` : ""}${new Date(rec.updatedAt || rec.createdAt).toLocaleDateString()}</p>
     <p>${esc(q.summary)}</p>
     <table class="items"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
     <tbody>${q.line_items.map((li) => `<tr><td>${esc(li.description)}</td><td class="num">${li.quantity} ${esc(li.unit)}</td>
-      <td class="num">${money(li.unit_price, cur)}</td><td class="num">${money(lineTotal(li, input.markup), cur)}</td></tr>`).join("")}</tbody></table>
+      <td class="num">${money(unitPrice(li, input.markup), cur)}</td><td class="num">${money(lineTotal(li, input.markup), cur)}</td></tr>`).join("")}</tbody></table>
     <div class="totals" style="margin-top:12px">
       <div><span>Subtotal</span><span>${money(t.subtotal, cur)}</span></div>
       ${t.tax ? `<div><span>Tax (${input.taxRate}%)</span><span>${money(t.tax, cur)}</span></div>` : ""}
       <div class="grand"><span>Total</span><span>${money(t.total, cur)}</span></div>
+      ${deposit ? `<div><span>Deposit to book (${input.depositPercent}%)</span><span>${money(deposit, cur)}</span></div>` : ""}
     </div>
     ${q.estimated_duration ? `<p><strong>Estimated duration:</strong> ${esc(q.estimated_duration)}</p>` : ""}
     ${listHtml("Scope of work", q.scope_of_work)}${listHtml("Not included", q.exclusions)}
     ${listHtml("Assumptions", q.assumptions)}${listHtml("Terms", q.terms)}
-    ${rec.respondedAt ? `<p><strong>${rec.status === "accepted" ? "Accepted" : "Declined"}</strong> by ${esc(rec.signature)} on ${new Date(rec.respondedAt).toLocaleString()}</p>` : ""}`;
+    ${rec.respondedAt ? `<p><strong>${rec.status === "accepted" ? "Accepted" : "Declined"}</strong> by ${esc(rec.signature)} on ${new Date(rec.respondedAt).toLocaleString()}</p>` : ""}
+    ${rec.status === "accepted" && deposit && /^https:\/\//.test(input.paymentLink || "")
+      ? `<div class="notice no-print"><strong>Next step:</strong> pay the ${money(deposit, cur)} deposit to lock in your booking.
+         <div style="margin-top:10px"><a class="btn" href="${esc(input.paymentLink)}" target="_blank" rel="noopener noreferrer">Pay deposit</a></div></div>` : ""}`;
+  $("pdf").href = `/q/${rec.id}/pdf`;
+  $("brand").classList.toggle("hidden", !rec.branded);
   $("respond").classList.toggle("hidden", rec.isOwner || rec.status === "accepted" || rec.status === "declined");
   if (rec.isOwner) $("root").insertAdjacentHTML("afterbegin",
     `<p class="notice no-print" style="margin-top:0">This is what your customer sees. <a href="/app?id=${rec.id}">Edit quote</a> · <a href="/dashboard">Dashboard</a></p>`);

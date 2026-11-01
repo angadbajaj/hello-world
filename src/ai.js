@@ -52,6 +52,7 @@ export async function generateQuote(input) {
     `Hourly labor rate: ${input.hourlyRate || "(not given - use a typical local rate and flag it)"}`,
     `Material markup: ${input.markup ?? 0}%`,
     `Contractor's own terms: ${input.terms || "(none - use standard terms)"}`,
+    `Deposit to book: ${input.depositPercent ? `${input.depositPercent}% (terms must state this exact deposit)` : "(not specified)"}`,
     "",
     "Job notes:",
     input.notes,
@@ -86,7 +87,7 @@ function demoQuote(input) {
     exclusions: ["Repairs to drywall or finishes beyond the work area", "Permits, unless listed above"],
     assumptions: ["Clear access to the work area", "Material prices are estimates and may vary up to 10%"],
     estimated_duration: "Half a day",
-    terms: ["Quote valid for 30 days", "50% deposit to book, balance due on completion"],
+    terms: ["Quote valid for 30 days", `${input.depositPercent || 50}% deposit to book, balance due on completion`],
     questions_for_client: ["Is there parking available close to the property?"],
   };
 }

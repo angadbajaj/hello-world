@@ -25,6 +25,12 @@
       <p class="error" id="planError"></p>
     </div>
 
+    <div id="logoCard" class="card" style="margin-top:16px">
+      <h2 style="margin-top:0">Your logo</h2>
+      <div id="logoBody"></div>
+      <p class="error" id="logoError"></p>
+    </div>
+
     <form id="profile" class="card" style="margin-top:16px">
       <h2 style="margin-top:0">Business profile</h2>
       <p class="muted">These details are filled in on every new quote.</p>
@@ -43,6 +49,12 @@
           <select id="currency"><option>USD</option><option>CAD</option><option>GBP</option><option>EUR</option><option>AUD</option><option>NZD</option></select></div>
       </div>
       <label for="terms">Standard terms</label><textarea id="terms" style="min-height:80px"></textarea>
+      <h3>Getting paid</h3>
+      <div class="grid">
+        <div><label for="depositPercent">Deposit to book (%)</label><input id="depositPercent" type="number" min="0" max="100" step="1" placeholder="0" /></div>
+        <div style="grid-column: span 2"><label for="paymentLink">Payment link (Stripe, Square, PayPal...)</label><input id="paymentLink" type="url" placeholder="https://buy.stripe.com/..." /></div>
+      </div>
+      <p class="muted" style="font-size:.9rem">When a customer accepts, they're shown the deposit amount and a "Pay deposit" button that opens this link.</p>
       <div class="row" style="margin-top:12px">
         <button class="btn" type="submit">Save profile</button><span id="saved" class="muted"></span>
       </div>
@@ -54,7 +66,7 @@
 import { api, renderNav, getMe, logout } from "/nav.js";
 import { esc, money, totals } from "/quote-render.js";
 const $ = (id) => document.getElementById(id);
-const FIELDS = ["businessName", "trade", "location", "phone", "email", "hourlyRate", "markup", "taxRate", "currency", "terms"];
+const FIELDS = ["businessName", "trade", "location", "phone", "email", "hourlyRate", "markup", "taxRate", "currency", "terms", "depositPercent", "paymentLink"];
 
 const me = await getMe();
 if (!me.user) {
@@ -98,7 +110,7 @@ if (sent.length) {
 $("list").innerHTML = quotes.length
   ? `<table class="items dash"><thead><tr><th>Quote</th><th>Customer</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>
     ${quotes.map((q) => { const s = statusOf(q); return `<tr>
-      <td><a href="/app?id=${q.id}">${esc(q.quote.title)}</a><div class="muted" style="font-size:.85rem">${new Date(q.createdAt).toLocaleDateString()}</div></td>
+      <td><a href="/app?id=${q.id}">${esc(q.quote.title)}</a><div class="muted" style="font-size:.85rem">${q.number ? `#${q.number} · ` : ""}${new Date(q.createdAt).toLocaleDateString()}</div></td>
       <td>${esc(q.input.customerName || "-")}</td>
       <td class="num">${money(valueOf(q), q.input.currency || "USD")}</td>
       <td><span class="status ${s.cls}">${esc(s.label)}</span></td>
@@ -108,7 +120,7 @@ $("list").innerHTML = quotes.length
 
 // ---- plan & billing ----
 const PLANS = {
-  pro: { name: "Pro", price: "$19/mo", pitch: "Unlimited quotes, your logo, PDF export, open and accept alerts." },
+  pro: { name: "Pro", price: "$19/mo", pitch: "Unlimited quotes, your logo on quotes and PDFs, no QuoteSmith branding, open alerts." },
   crew: { name: "Crew", price: "$49/mo", pitch: "Up to 5 users and a shared price book." },
 };
 const params = new URLSearchParams(location.search);
@@ -165,6 +177,50 @@ if (params.get("upgraded")) {
   }
   history.replaceState(null, "", "/dashboard");
 }
+
+// ---- logo ----
+function renderLogo(user) {
+  if (user.plan === "free") {
+    $("logoBody").innerHTML = `<p class="muted">Put your logo on every quote and PDF, and remove the QuoteSmith branding. <a href="#plan">Pro feature</a>.</p>`;
+    return;
+  }
+  $("logoBody").innerHTML = `
+    ${user.hasLogo ? `<img src="/api/me/logo?t=${Date.now()}" alt="Your logo" class="logo-img" />` : `<p class="muted">PNG or JPEG. It appears on your quotes and PDFs.</p>`}
+    <div class="row"><label class="btn ghost" style="margin:0">${user.hasLogo ? "Replace" : "Upload logo"}<input type="file" id="logoFile" accept="image/png,image/jpeg" hidden /></label>
+    ${user.hasLogo ? `<button class="btn ghost" id="logoRemove" type="button">Remove</button>` : ""}</div>`;
+}
+
+// Downscale in the browser so uploads stay small and fast.
+function toDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 600 / img.width, 240 / img.height);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL(file.type === "image/jpeg" ? "image/jpeg" : "image/png", 0.9));
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => reject(new Error("That file isn't an image we can read."));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+$("logoBody").addEventListener("change", async (e) => {
+  if (e.target.id !== "logoFile" || !e.target.files[0]) return;
+  $("logoError").textContent = "";
+  try {
+    await api("/api/me/logo", { method: "PUT", body: { dataUrl: await toDataUrl(e.target.files[0]) } });
+    me.user.hasLogo = true; renderLogo(me.user);
+  } catch (err) { $("logoError").textContent = err.message; }
+});
+$("logoBody").addEventListener("click", async (e) => {
+  if (e.target.id !== "logoRemove") return;
+  await api("/api/me/logo", { method: "DELETE" });
+  me.user.hasLogo = false; renderLogo(me.user);
+});
+renderLogo(me.user);
 
 $("profile").onsubmit = async (e) => {
   e.preventDefault();

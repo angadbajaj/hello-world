@@ -43,9 +43,12 @@ db.exec(`
 
 // Additive migrations for databases created by earlier versions.
 const userCols = new Set(db.prepare("PRAGMA table_info(users)").all().map((c) => c.name));
-for (const [col, type] of [["stripe_customer_id", "TEXT"], ["stripe_subscription_id", "TEXT"], ["plan_status", "TEXT"]]) {
+for (const [col, type] of [["stripe_customer_id", "TEXT"], ["stripe_subscription_id", "TEXT"], ["plan_status", "TEXT"],
+  ["logo", "TEXT"], ["quote_seq", "INTEGER NOT NULL DEFAULT 0"]]) {
   if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
 }
+const quoteCols = new Set(db.prepare("PRAGMA table_info(quotes)").all().map((c) => c.name));
+if (!quoteCols.has("number")) db.exec("ALTER TABLE quotes ADD COLUMN number INTEGER");
 
 const now = () => new Date().toISOString();
 const newId = (bytes) => crypto.randomBytes(bytes).toString("base64url");
@@ -68,7 +71,7 @@ function toUser(row) {
   if (!row) return null;
   return {
     id: row.id, email: row.email, plan: row.plan, planStatus: row.plan_status, profile: JSON.parse(row.profile),
-    stripeCustomerId: row.stripe_customer_id, createdAt: row.created_at,
+    stripeCustomerId: row.stripe_customer_id, hasLogo: Boolean(row.logo), createdAt: row.created_at,
   };
 }
 
@@ -97,6 +100,19 @@ export function getUser(id) {
 export function updateProfile(id, profile) {
   db.prepare("UPDATE users SET profile = ? WHERE id = ?").run(JSON.stringify(profile), id);
   return getUser(id);
+}
+
+export function setLogo(id, dataUrl) {
+  db.prepare("UPDATE users SET logo = ? WHERE id = ?").run(dataUrl, id);
+}
+
+export function getLogo(id) {
+  return db.prepare("SELECT logo FROM users WHERE id = ?").get(id)?.logo || null;
+}
+
+// Per-account quote numbers (#1001, #1002, ...) so quotes look like they came from a real business.
+export function nextQuoteNumber(userId) {
+  return db.prepare("UPDATE users SET quote_seq = quote_seq + 1 WHERE id = ? RETURNING quote_seq").get(userId).quote_seq + 1000;
 }
 
 export function setStripeCustomer(id, customerId) {
@@ -136,7 +152,7 @@ export function deleteSession(token) {
 function toQuote(row) {
   if (!row) return null;
   return {
-    id: row.id, userId: row.user_id, editKey: row.edit_key, status: row.status,
+    id: row.id, userId: row.user_id, editKey: row.edit_key, status: row.status, number: row.number,
     input: JSON.parse(row.input), quote: JSON.parse(row.quote),
     createdAt: row.created_at, updatedAt: row.updated_at, viewedAt: row.viewed_at,
     respondedAt: row.responded_at, signature: row.signature, customerNote: row.customer_note,
@@ -146,8 +162,9 @@ function toQuote(row) {
 export function createQuote({ input, quote, userId = null }) {
   const id = newId(6);
   const t = now();
-  db.prepare(`INSERT INTO quotes (id, user_id, edit_key, input, quote, created_at, claimed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, userId, newId(12), JSON.stringify(input), JSON.stringify(quote), t, userId ? t : null);
+  db.prepare(`INSERT INTO quotes (id, user_id, edit_key, input, quote, created_at, claimed_at, number)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, userId, newId(12), JSON.stringify(input), JSON.stringify(quote), t, userId ? t : null,
+    userId ? nextQuoteNumber(userId) : null);
   return getQuote(id);
 }
 
@@ -156,7 +173,7 @@ export function getQuote(id) {
 }
 
 const COLUMNS = { status: "status", input: "input", quote: "quote", userId: "user_id", viewedAt: "viewed_at",
-  respondedAt: "responded_at", signature: "signature", customerNote: "customer_note", claimedAt: "claimed_at" };
+  respondedAt: "responded_at", signature: "signature", customerNote: "customer_note", claimedAt: "claimed_at", number: "number" };
 
 export function updateQuote(id, patch) {
   const sets = [];

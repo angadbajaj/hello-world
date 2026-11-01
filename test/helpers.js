@@ -18,6 +18,7 @@ export async function startServer(env = {}) {
   }
   return {
     base,
+    dataDir,
     stop() { proc.kill(); fs.rmSync(dataDir, { recursive: true, force: true }); },
     client() {
       let cookie = "";
@@ -28,7 +29,8 @@ export async function startServer(env = {}) {
         });
         const set = r.headers.get("set-cookie");
         if (set) cookie = set.split(";")[0];
-        return { status: r.status, body: await r.json() };
+        const type = r.headers.get("content-type") || "";
+        return { status: r.status, type, body: type.includes("json") ? await r.json() : Buffer.from(await r.arrayBuffer()) };
       };
     },
   };

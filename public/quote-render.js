@@ -12,17 +12,19 @@ export function money(n, currency = "USD") {
 
 export function totals(quote, { markup = 0, taxRate = 0 } = {}) {
   let subtotal = 0;
-  for (const li of quote.line_items) {
-    const base = (Number(li.quantity) || 0) * (Number(li.unit_price) || 0);
-    subtotal += li.category === "materials" ? base * (1 + markup / 100) : base;
-  }
+  for (const li of quote.line_items) subtotal += lineTotal(li, markup);
   const tax = subtotal * (taxRate / 100);
   return { subtotal, tax, total: subtotal + tax };
 }
 
+// Materials markup is folded into the unit price the customer sees.
+export function unitPrice(li, markup = 0) {
+  const price = Number(li.unit_price) || 0;
+  return li.category === "materials" ? price * (1 + markup / 100) : price;
+}
+
 export function lineTotal(li, markup = 0) {
-  const base = (Number(li.quantity) || 0) * (Number(li.unit_price) || 0);
-  return li.category === "materials" ? base * (1 + markup / 100) : base;
+  return (Number(li.quantity) || 0) * unitPrice(li, markup);
 }
 
 export function listHtml(title, items) {

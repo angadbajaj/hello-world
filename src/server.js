@@ -3,6 +3,8 @@ import path from "node:path";
 import { generateQuote, aiEnabled, QuoteSchema } from "./ai.js";
 import * as store from "./store.js";
 import * as billing from "./billing.js";
+import * as notify from "./notify.js";
+import { renderQuotePdf } from "./pdf.js";
 
 const app = express();
 const PUBLIC = path.resolve("public");
@@ -22,6 +24,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json", limit: "
   }
 });
 
+// Logos are uploaded as data URLs, so this route gets a larger body limit than the rest of the API.
+app.put("/api/me/logo", express.json({ limit: "400kb" }));
 app.use(express.json({ limit: "200kb" }));
 app.use(express.static(PUBLIC, { extensions: ["html"] }));
 
@@ -72,6 +76,13 @@ function overLimit(user) {
 }
 const LIMIT_ERROR = { error: "You've used all your free quotes this month. Upgrade to Pro for unlimited quotes.", upgrade: true };
 
+// Contact and payment details are copied onto the quote when it's created or claimed, so a sent
+// quote doesn't change if the contractor edits their profile later.
+function paymentTerms(user) {
+  const p = user?.profile || {};
+  return { contactPhone: p.phone || "", contactEmail: p.email || "", depositPercent: p.depositPercent || 0, paymentLink: p.paymentLink || "" };
+}
+
 const canEdit = (q, req, key) => q && ((req.user && q.userId === req.user.id) || (!q.userId && key && key === q.editKey));
 
 // ---- auth ----
@@ -104,16 +115,59 @@ app.post("/api/logout", (req, res) => {
 app.get("/api/me", (req, res) => res.json(req.user ? { user: req.user, usage: usage(req.user), billing: billing.billingStatus() } : { user: null }));
 
 const PROFILE_FIELDS = { trade: 60, businessName: 120, location: 120, currency: 8, terms: 2000, phone: 40, email: 200 };
-const PROFILE_NUMBERS = ["hourlyRate", "markup", "taxRate"];
+const PROFILE_NUMBERS = ["hourlyRate", "markup", "taxRate", "depositPercent"];
 app.put("/api/me/profile", requireUser, (req, res) => {
   const b = req.body || {};
   const profile = {};
   for (const [k, max] of Object.entries(PROFILE_FIELDS)) profile[k] = str(b[k], max);
-  for (const k of PROFILE_NUMBERS) profile[k] = Number(b[k]) || 0;
+  for (const k of PROFILE_NUMBERS) profile[k] = Math.max(0, Number(b[k]) || 0);
+  profile.depositPercent = Math.min(profile.depositPercent, 100);
+  const link = str(b.paymentLink, 500);
+  if (link && !/^https:\/\/[^\s<>"']+$/.test(link)) return res.status(400).json({ error: "Payment link must start with https://" });
+  profile.paymentLink = link;
   res.json({ user: store.updateProfile(req.user.id, profile) });
 });
 
 // ---- quotes (contractor side) ----
+
+// ---- logo (Pro) ----
+
+const isPaid = (user) => Boolean(user && user.plan !== "free");
+
+app.put("/api/me/logo", requireUser, (req, res) => {
+  if (!isPaid(req.user)) return res.status(402).json({ error: "Your logo on quotes is a Pro feature.", upgrade: true });
+  const dataUrl = String(req.body?.dataUrl || "");
+  // PNG/JPEG only: they render in the PDF, and SVG could carry scripts.
+  if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) return res.status(400).json({ error: "Upload a PNG or JPEG image." });
+  if (dataUrl.length > 300_000) return res.status(413).json({ error: "Logo is too large. Please use an image under 200 KB." });
+  store.setLogo(req.user.id, dataUrl);
+  res.json({ ok: true });
+});
+
+app.delete("/api/me/logo", requireUser, (req, res) => {
+  store.setLogo(req.user.id, null);
+  res.json({ ok: true });
+});
+
+// Branding for a quote: the owner's logo shows only while they're on a paid plan.
+function brandingFor(q) {
+  const owner = q.userId ? store.getUser(q.userId) : null;
+  const paid = isPaid(owner);
+  return { owner, paid, logo: paid ? store.getLogo(owner.id) : null };
+}
+
+function sendDataUrl(res, dataUrl) {
+  const m = /^data:(image\/(?:png|jpeg));base64,(.+)$/.exec(dataUrl || "");
+  if (!m) return res.status(404).end();
+  res.set({ "content-type": m[1], "cache-control": "private, max-age=300" }).send(Buffer.from(m[2], "base64"));
+}
+
+app.get("/api/me/logo", requireUser, (req, res) => sendDataUrl(res, store.getLogo(req.user.id)));
+app.get("/api/q/:id/logo", (req, res) => {
+  const q = store.getQuote(req.params.id);
+  if (!q) return res.status(404).end();
+  sendDataUrl(res, brandingFor(q).logo);
+});
 
 app.get("/api/health", (req, res) => res.json({ ok: true, ai: aiEnabled(), billing: billing.billingStatus().enabled }));
 
@@ -163,8 +217,7 @@ app.post("/api/quotes", quoteLimiter, (req, res, next) => (req.user ? next() : a
     terms: str(b.terms, 2000),
     notes: str(b.notes, 6000),
     customerName: str(b.customerName, 120),
-    contactPhone: req.user?.profile.phone || "",
-    contactEmail: req.user?.profile.email || "",
+    ...paymentTerms(req.user),
   };
   if (input.notes.length < 15) return res.status(400).json({ error: "Add a few more details about the job." });
   try {
@@ -191,13 +244,11 @@ app.put("/api/quotes/:id", requireUser, (req, res) => {
   const patch = {};
   if (!q.userId) {
     if (overLimit(req.user)) return res.status(402).json(LIMIT_ERROR);
-    Object.assign(patch, { userId: req.user.id, claimedAt: new Date().toISOString() });
+    Object.assign(patch, { userId: req.user.id, claimedAt: new Date().toISOString(), number: store.nextQuoteNumber(req.user.id) });
   }
   const taxRate = Number(req.body.taxRate);
   const input = { ...q.input, taxRate: Number.isFinite(taxRate) ? taxRate : q.input.taxRate };
-  if (!input.contactPhone && !input.contactEmail) {
-    Object.assign(input, { contactPhone: req.user.profile.phone || "", contactEmail: req.user.profile.email || "" });
-  }
+  if (!q.userId) Object.assign(input, paymentTerms(req.user));
   Object.assign(patch, { quote: parsed.data, input, status: q.status === "draft" ? "sent" : q.status });
   res.json(store.updateQuote(q.id, patch));
 });
@@ -208,8 +259,12 @@ app.get("/api/q/:id", (req, res) => {
   const q = store.getQuote(req.params.id);
   if (!q || q.status === "draft") return res.status(404).json({ error: "Quote not found" });
   const isOwner = req.user && req.user.id === q.userId;
-  if (!q.viewedAt && !isOwner) store.updateQuote(q.id, { viewedAt: new Date().toISOString() });
-  res.json({ ...store.publicView(q), isOwner: Boolean(isOwner) });
+  const { owner, paid, logo } = brandingFor(q);
+  if (!q.viewedAt && !isOwner) {
+    store.updateQuote(q.id, { viewedAt: new Date().toISOString() });
+    if (paid) notify.quoteViewed(owner, q, origin(req));
+  }
+  res.json({ ...store.publicView(q), isOwner: Boolean(isOwner), hasLogo: Boolean(logo), branded: !paid });
 });
 
 app.post("/api/q/:id/respond", (req, res) => {
@@ -223,7 +278,18 @@ app.post("/api/q/:id/respond", (req, res) => {
     signature: str(req.body?.name, 120),
     customerNote: str(req.body?.note, 1000),
   });
-  res.json(store.publicView(updated));
+  const owner = updated.userId && store.getUser(updated.userId);
+  if (owner) notify.quoteResponded(owner, updated, origin(req));
+  res.json({ ...store.publicView(updated), hasLogo: Boolean(brandingFor(updated).logo), branded: !isPaid(owner) });
+});
+
+app.get("/q/:id/pdf", (req, res) => {
+  const q = store.getQuote(req.params.id);
+  const isOwner = q && req.user && req.user.id === q.userId;
+  if (!q || (q.status === "draft" && !isOwner)) return res.status(404).send("Quote not found");
+  const { paid, logo } = brandingFor(q);
+  res.set({ "content-type": "application/pdf", "content-disposition": `inline; filename="quote-${q.number || q.id}.pdf"` });
+  renderQuotePdf(q, { logo, branded: !paid }, res);
 });
 
 app.get("/q/:id", (req, res) => res.sendFile(path.join(PUBLIC, "quote.html")));

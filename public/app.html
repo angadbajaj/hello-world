@@ -85,6 +85,7 @@
         <div id="share" class="hidden" style="margin-top:16px">
           <label for="shareUrl">Send this link to your customer</label>
           <div class="row"><input id="shareUrl" readonly style="flex:1" /><button class="btn ghost" id="copy" type="button">Copy</button></div>
+          <div class="row" style="margin-top:8px"><a class="btn ghost" id="pdfLink" href="#" target="_blank">Download PDF</a><a id="previewLink" href="#" target="_blank">Preview as customer</a></div>
         </div>
       </div>
     </div>
@@ -139,7 +140,7 @@ function open(data) {
   document.querySelectorAll("[data-list]").forEach((t) => (t.value = (q[t.dataset.list] || []).join("\n")));
   $("questions").innerHTML = q.questions_for_client?.length
     ? `<h3>Check with your customer</h3><ul>${q.questions_for_client.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
-  $("status").textContent = rec.status; $("status").className = `status ${rec.status}`;
+  $("status").textContent = rec.number ? `#${rec.number} · ${rec.status}` : rec.status; $("status").className = `status ${rec.status}`;
   if (rec.status !== "draft") showShare();
   renderItems();
 }
@@ -238,6 +239,8 @@ $("authGo").onclick = async () => {
 function showShare() {
   $("share").classList.remove("hidden");
   $("shareUrl").value = `${location.origin}/q/${rec.id}`;
+  $("pdfLink").href = `/q/${rec.id}/pdf`;
+  $("previewLink").href = `/q/${rec.id}`;
 }
 $("copy").onclick = () => { $("shareUrl").select(); navigator.clipboard?.writeText($("shareUrl").value); $("copy").textContent = "Copied"; };
 
