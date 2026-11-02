@@ -111,3 +111,34 @@ test("email alerts: accept/decline for everyone, opens for Pro only", async () =
   mail = outbox().filter((m) => m.to === "office@pro.example.com");
   assert.deepEqual(mail.map((m) => m.subject), ["Jane just opened your quote"]);
 });
+
+test("price book: CRUD, per-account isolation, and reuse in new quotes", async () => {
+  const { c } = await account("pb@example.com");
+  assert.equal((await c("/api/price-book", { method: "POST", body: { description: "", unit_price: 5 } })).status, 400);
+  const item = (await c("/api/price-book", { method: "POST", body: { description: "Wax ring with horn", category: "materials", unit: "each", unit_price: 8.499 } })).body;
+  assert.equal(item.unit_price, 8.5);
+  const edited = await c(`/api/price-book/${item.id}`, { method: "PUT", body: { ...item, unit_price: 9 } });
+  assert.equal(edited.body.unit_price, 9);
+
+  const other = await account("pb-other@example.com");
+  assert.deepEqual((await other.c("/api/price-book")).body.items, []);
+  assert.equal((await other.c(`/api/price-book/${item.id}`, { method: "DELETE" })).status, 404);
+
+  // Demo mode mimics the model reusing price book items the notes mention.
+  const q = (await c("/api/quotes", { method: "POST", body: { notes: "Toilet leaking at base, replace wax ring and reset" } })).body;
+  assert.ok(q.quote.line_items.some((l) => l.description === "Wax ring with horn" && l.unit_price === 9));
+
+  assert.equal((await c(`/api/price-book/${item.id}`, { method: "DELETE" })).status, 200);
+  assert.deepEqual((await c("/api/price-book")).body.items, []);
+});
+
+test("photos: validated, capped at three, and enough on their own", async () => {
+  const { c } = await account("photo@example.com");
+  const jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==";
+  assert.equal((await c("/api/quotes", { method: "POST", body: { notes: "", photos: ["data:image/svg+xml;base64,PHN2Zy8+"] } })).status, 400);
+  assert.equal((await c("/api/quotes", { method: "POST", body: { notes: "" } })).status, 400);
+  const q = (await c("/api/quotes", { method: "POST", body: { notes: "", photos: [jpeg, jpeg, jpeg, jpeg] } })).body;
+  assert.equal(q.input.photoCount, 3);
+  assert.equal(q.input.notes, "(See photos.)");
+  assert.ok(!JSON.stringify(q).includes("/9j/"), "photo data must not be stored");
+});

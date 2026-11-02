@@ -71,3 +71,19 @@ Totals labels sit too close together in the mobile editor.
 - The "Made with QuoteSmith" footer on free quotes is our only zero-cost acquisition channel. Keep it tasteful, and keep it.
 
 **Next (Day 5):** quote quality. Build an eval set of real-world job notes across trades, tune the prompt, add a price book the AI reuses, and photo input.
+
+## 2026-11-02: Day 5, quote quality
+**Shipped**
+- **Price book**: a dashboard section to add/edit/delete standard items (description, type, unit, price; max 200 per account). Every quote request sends it to the AI, which must reuse matching items with their exact description and price. Each line in the quote editor has a ☆ button to save it to the price book, so it fills up as contractors work.
+- **Job photos**: attach up to 3 photos (they open the phone camera on mobile, are downscaled in the browser, and are sent to Claude as images). Photos alone are enough to start a quote. Photo data is never stored, only the count.
+- **Prompt rules**: labor in quarter hours; material prices are cost, so the AI must not add markup itself (the app applies it, which could otherwise double-count); reuse the price book verbatim; mention anything inferred from photos.
+- **Mobile-first quote form**: customer → notes → photos → button. The business details and rates sit in a collapsible "Your business & rates" section, closed for returning users with a one-line summary.
+- **Eval set** (`evals/`): 16 realistic cases across plumbing, electrical, painting, HVAC, handyman, cleaning, landscaping, roofing, a UK/GBP job, deliberately vague notes, and a missing rate, scored by automatic checks. `npm run eval` runs them against the real model and saves the results.
+- **Node version check**: `npm start` now prints a clear "needs Node 22.13+" message with the fix (`.nvmrc` and `engines` added too). This was prompted by the founder hitting an old Node locally.
+- Tests: 20/20 pass (new: price book CRUD/isolation/reuse, photo validation and cap, eval cases well-formed, checks pass a good quote and catch each mistake). Also fixed a flaky test port collision by using OS-assigned ports. Playwright run of add/edit price book → quote with photos → price-book item at the edited price → ☆ save a line: passes at 390px and 1280px with no console errors, and the Day 2 and Day 4 flows still pass.
+
+**Learned**
+- I can't judge real quote quality without an API key. The harness is ready, but its first real run is the most valuable next step for the product.
+- The founder wants to *see* the product, so a live link matters more right now than more features.
+
+**Next (Day 6):** Render deploy blueprint + guide, then per-trade SEO pages.

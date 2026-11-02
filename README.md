@@ -4,6 +4,7 @@ AI job quotes for tradespeople. Type rough notes and get an itemized, profession
 customer can accept on their phone.
 
 ## Run it
+Needs **Node.js 22.13 or newer** (`node -v` to check; get the LTS from https://nodejs.org). `npm start` checks this and explains if your version is too old.
 ```bash
 npm install
 ANTHROPIC_API_KEY=sk-ant-... npm start   # http://localhost:3000
@@ -31,6 +32,14 @@ If you leave out the key, it runs in demo mode with a sample quote.
 
 Requires Node 22.13+ (uses the built-in `node:sqlite`). Data is stored in `DATA_DIR/quotesmith.db`.
 
+## Checking quote quality
+`evals/cases.json` holds realistic job notes across trades, and `evals/checks.js` has automatic checks: the contractor's rate is used, labor is in quarter hours, price book items are reused exactly, the deposit appears in the terms, the subtotal is in a sane range, and the key scope is mentioned.
+```bash
+ANTHROPIC_API_KEY=sk-ant-... npm run eval          # all cases (real model calls, a few cents each)
+ANTHROPIC_API_KEY=sk-ant-... npm run eval -- plumb # only cases whose id contains "plumb"
+```
+Results are saved to `evals/results/`. Run it before and after any prompt change.
+
 ## Setting up billing (Stripe)
 1. In Stripe, create a product "QuoteSmith Pro" with a $19/month recurring price, and copy the price ID (`price_...`) into `STRIPE_PRICE_PRO`.
 2. Copy your secret key into `STRIPE_SECRET_KEY`. Use test mode (`sk_test_...`) first.
@@ -48,6 +57,7 @@ Until these are set, the app runs normally and paid plans show as "coming soon".
 - `src/pdf.js`: server-side quote PDFs (pdfkit)
 - `src/notify.js`: contractor email alerts (Resend, or a local outbox file)
 - `public/`: landing page (`index.html`), quote builder (`app.html`), customer view (`quote.html`), `login.html`, `dashboard.html`
+- `evals/`: quote-quality cases and checks (`npm run eval`)
 - `test/`: `npm test` runs the unit tests plus API tests against a real server
 
 See `ROADMAP.md` for the plan and `LOG.md` for daily progress.

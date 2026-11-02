@@ -4,9 +4,12 @@
   "description": "AI job quotes for tradespeople",
   "main": "src/server.js",
   "scripts": {
+    "prestart": "node scripts/check-node.cjs",
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "predev": "node scripts/check-node.cjs",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "eval": "node --disable-warning=ExperimentalWarning scripts/eval.js"
   },
   "repository": {
     "type": "git",
@@ -25,5 +28,8 @@
     "stripe": "^23.1.0",
     "zod": "^4.6.7"
   },
-  "type": "module"
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  }
 }

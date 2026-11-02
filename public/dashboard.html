@@ -25,6 +25,19 @@
       <p class="error" id="planError"></p>
     </div>
 
+    <div id="priceBook" class="card" style="margin-top:16px">
+      <h2 style="margin-top:0">Price book</h2>
+      <p class="muted">Your standard items and prices. The AI uses these exact prices whenever a job needs them. Tip: tap ☆ on any quote line to save it here.</p>
+      <table class="items pb"><thead><tr><th>Item</th><th>Type</th><th>Unit</th><th class="num">Your price</th><th></th></tr></thead>
+        <tbody id="pbRows"></tbody></table>
+      <form id="pbAdd" class="row" style="margin-top:10px">
+        <input id="pbDesc" placeholder="e.g. Toilet wax ring" style="flex:2;min-width:160px" />
+        <input id="pbPrice" type="number" step="0.01" min="0" placeholder="Price" style="flex:1;min-width:90px" />
+        <button class="btn" type="submit">Add</button>
+      </form>
+      <p class="error" id="pbError"></p>
+    </div>
+
     <div id="logoCard" class="card" style="margin-top:16px">
       <h2 style="margin-top:0">Your logo</h2>
       <div id="logoBody"></div>
@@ -177,6 +190,41 @@ if (params.get("upgraded")) {
   }
   history.replaceState(null, "", "/dashboard");
 }
+
+// ---- price book ----
+const CATS = ["labor", "materials", "equipment", "fee", "other"];
+let pb = (await api("/api/price-book")).items;
+function renderPb() {
+  $("pbRows").innerHTML = pb.length ? pb.map((it) => `<tr data-id="${esc(it.id)}">
+      <td><input data-k="description" value="${esc(it.description)}" aria-label="Item" /></td>
+      <td><select data-k="category" aria-label="Type">${CATS.map((c) => `<option ${c === it.category ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+      <td><input data-k="unit" value="${esc(it.unit)}" style="width:70px" aria-label="Unit" /></td>
+      <td class="num"><input data-k="unit_price" type="number" step="0.01" min="0" value="${it.unit_price}" style="width:90px" aria-label="Price" /></td>
+      <td><button type="button" class="btn ghost" data-del aria-label="Delete item">×</button></td></tr>`).join("")
+    : `<tr><td colspan="5" class="muted">No items yet.</td></tr>`;
+}
+renderPb();
+$("pbRows").addEventListener("change", async (e) => {
+  const tr = e.target.closest("tr[data-id]"); if (!tr) return;
+  const it = pb.find((x) => x.id === tr.dataset.id);
+  it[e.target.dataset.k] = e.target.dataset.k === "unit_price" ? Number(e.target.value) : e.target.value;
+  try { Object.assign(it, await api(`/api/price-book/${it.id}`, { method: "PUT", body: it })); $("pbError").textContent = ""; }
+  catch (err) { $("pbError").textContent = err.message; }
+});
+$("pbRows").addEventListener("click", async (e) => {
+  if (!("del" in e.target.dataset)) return;
+  const id = e.target.closest("tr").dataset.id;
+  await api(`/api/price-book/${id}`, { method: "DELETE" });
+  pb = pb.filter((x) => x.id !== id); renderPb();
+});
+$("pbAdd").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const it = await api("/api/price-book", { method: "POST", body: { description: $("pbDesc").value, unit_price: $("pbPrice").value, category: "materials", unit: "each" } });
+    pb.push(it); pb.sort((a, b) => a.description.localeCompare(b.description)); renderPb();
+    $("pbDesc").value = ""; $("pbPrice").value = ""; $("pbError").textContent = ""; $("pbDesc").focus();
+  } catch (err) { $("pbError").textContent = err.message; }
+};
 
 // ---- logo ----
 function renderLogo(user) {

@@ -2,10 +2,21 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import net from "node:net";
+
+// Ask the OS for an unused port so parallel test files never collide.
+function freePort() {
+  return new Promise((resolve) => {
+    const srv = net.createServer().listen(0, () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
 
 // Starts the real server on a random port with a throwaway database.
 export async function startServer(env = {}) {
-  const port = 3900 + Math.floor(Math.random() * 900);
+  const port = await freePort();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "qs-test-"));
   const proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "src/server.js"], {
     env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "", ...env },

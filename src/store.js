@@ -39,6 +39,16 @@ db.exec(`
     customer_note TEXT
   );
   CREATE INDEX IF NOT EXISTS quotes_user ON quotes(user_id, created_at);
+  CREATE TABLE IF NOT EXISTS price_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    unit_price REAL NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS price_items_user ON price_items(user_id);
 `);
 
 // Additive migrations for databases created by earlier versions.
@@ -205,4 +215,34 @@ export function quotesThisMonth(userId) {
 export function publicView(q) {
   const { editKey, userId, ...rest } = q;
   return rest;
+}
+
+// ---- price book ----
+
+export const PRICE_BOOK_LIMIT = 200;
+
+export function listPriceItems(userId) {
+  return db.prepare("SELECT id, description, category, unit, unit_price FROM price_items WHERE user_id = ? ORDER BY description COLLATE NOCASE")
+    .all(userId).map((r) => ({ ...r }));
+}
+
+export function countPriceItems(userId) {
+  return db.prepare("SELECT COUNT(*) AS n FROM price_items WHERE user_id = ?").get(userId).n;
+}
+
+export function addPriceItem(userId, item) {
+  const id = newId(6);
+  db.prepare("INSERT INTO price_items (id, user_id, description, category, unit, unit_price, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, userId, item.description, item.category, item.unit, item.unit_price, now());
+  return { id, ...item };
+}
+
+export function updatePriceItem(userId, id, item) {
+  const r = db.prepare("UPDATE price_items SET description = ?, category = ?, unit = ?, unit_price = ? WHERE id = ? AND user_id = ?")
+    .run(item.description, item.category, item.unit, item.unit_price, id, userId);
+  return r.changes ? { id, ...item } : null;
+}
+
+export function deletePriceItem(userId, id) {
+  return db.prepare("DELETE FROM price_items WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
 }

@@ -26,6 +26,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json", limit: "
 
 // Logos are uploaded as data URLs, so this route gets a larger body limit than the rest of the API.
 app.put("/api/me/logo", express.json({ limit: "400kb" }));
+// Quote requests can carry up to 3 job-site photos (resized in the browser first).
+app.post("/api/quotes", express.json({ limit: "4mb" }));
 app.use(express.json({ limit: "200kb" }));
 app.use(express.static(PUBLIC, { extensions: ["html"] }));
 
@@ -130,6 +132,41 @@ app.put("/api/me/profile", requireUser, (req, res) => {
 
 // ---- quotes (contractor side) ----
 
+// ---- price book ----
+
+const CATEGORIES = ["labor", "materials", "equipment", "fee", "other"];
+function priceItemFrom(b) {
+  const item = {
+    description: str(b?.description, 200),
+    category: CATEGORIES.includes(b?.category) ? b.category : "materials",
+    unit: str(b?.unit, 20) || "each",
+    unit_price: Math.round(Math.max(0, Number(b?.unit_price) || 0) * 100) / 100,
+  };
+  return item.description ? item : null;
+}
+
+app.get("/api/price-book", requireUser, (req, res) => res.json({ items: store.listPriceItems(req.user.id) }));
+
+app.post("/api/price-book", requireUser, (req, res) => {
+  const item = priceItemFrom(req.body);
+  if (!item) return res.status(400).json({ error: "Give the item a description." });
+  if (store.countPriceItems(req.user.id) >= store.PRICE_BOOK_LIMIT) {
+    return res.status(400).json({ error: `Your price book is full (${store.PRICE_BOOK_LIMIT} items).` });
+  }
+  res.json(store.addPriceItem(req.user.id, item));
+});
+
+app.put("/api/price-book/:id", requireUser, (req, res) => {
+  const item = priceItemFrom(req.body);
+  if (!item) return res.status(400).json({ error: "Give the item a description." });
+  const saved = store.updatePriceItem(req.user.id, req.params.id, item);
+  saved ? res.json(saved) : res.status(404).json({ error: "Not found" });
+});
+
+app.delete("/api/price-book/:id", requireUser, (req, res) => {
+  store.deletePriceItem(req.user.id, req.params.id) ? res.json({ ok: true }) : res.status(404).json({ error: "Not found" });
+});
+
 // ---- logo (Pro) ----
 
 const isPaid = (user) => Boolean(user && user.plan !== "free");
@@ -219,9 +256,18 @@ app.post("/api/quotes", quoteLimiter, (req, res, next) => (req.user ? next() : a
     customerName: str(b.customerName, 120),
     ...paymentTerms(req.user),
   };
-  if (input.notes.length < 15) return res.status(400).json({ error: "Add a few more details about the job." });
+  const photos = [];
+  for (const p of Array.isArray(b.photos) ? b.photos.slice(0, 3) : []) {
+    const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(p || ""));
+    if (!m || m[2].length > 1_500_000) return res.status(400).json({ error: "Photos must be JPEG or PNG images under 1 MB." });
+    photos.push({ mediaType: m[1], data: m[2] });
+  }
+  input.photoCount = photos.length;
+  if (input.notes.length < 15 && !photos.length) return res.status(400).json({ error: "Add a few more details about the job." });
+  if (!input.notes) input.notes = "(See photos.)";
   try {
-    const quote = await generateQuote(input);
+    const priceBook = req.user ? store.listPriceItems(req.user.id) : [];
+    const quote = await generateQuote(input, { priceBook, photos });
     res.json(store.createQuote({ input, quote, userId: req.user?.id }));
   } catch (err) {
     console.error(err);
