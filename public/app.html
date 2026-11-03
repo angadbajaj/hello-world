@@ -115,6 +115,9 @@ if (!profile || !Object.values(profile).some(Boolean)) {
   try { profile = JSON.parse(localStorage.getItem("qs_profile") || "{}"); } catch { profile = {}; }
 }
 for (const f of PROFILE_FIELDS) if (profile[f] != null && profile[f] !== "") $(f).value = profile[f];
+// Arriving from a trade template page.
+const tradeParam = new URLSearchParams(location.search).get("trade");
+if (tradeParam && !$("trade").value) $("trade").value = tradeParam.slice(0, 60);
 // Returning contractors already have their details saved, so tuck them away and lead with the job.
 if (profile.trade && profile.hourlyRate) {
   $("bizDetails").open = false;

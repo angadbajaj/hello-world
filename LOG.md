@@ -87,3 +87,16 @@ Totals labels sit too close together in the mobile editor.
 - The founder wants to *see* the product, so a live link matters more right now than more features.
 
 **Next (Day 6):** Render deploy blueprint + guide, then per-trade SEO pages.
+
+## 2026-11-03: Day 6, deployable + search pages
+**Shipped**
+- **Deploy kit**: a `Dockerfile` (Node 22, production deps only, runs as a non-root user, data on a `/data` volume, built-in health check), `render.yaml` (one web service plus a 1 GB persistent disk, secrets prompted at setup), and `DEPLOY.md`, a click-by-click guide for a non-developer, including how not to lose data.
+- **Production hardening**: security headers (nosniff, DENY framing, referrer policy, HSTS in production), no `x-powered-by`, `/api/health` actually checks the database, and SIGTERM finishes in-flight requests and closes SQLite cleanly so redeploys don't corrupt data.
+- **Verified like the image would run**: Docker Hub and the ECR mirror are blocked from this sandbox, so I couldn't build the image itself. I reproduced it instead: the same files, a clean `npm ci --omit=dev`, run as `nobody` with `NODE_ENV=production` and the data dir as the volume. Signup → quote → SIGTERM (clean exit) → restart → login: the account and quote were still there. Cookies had `Secure` and HSTS was present.
+- **8 trade template pages** (plumbing, electrical, painting, handyman, HVAC, roofing, landscaping, cleaning): what to include, a worked example with realistic line items (labeled as example figures), trade-specific exclusions, 2 FAQs with FAQPage structured data, and a CTA into `/app?trade=…`, which pre-fills the trade. Plus an index page, `sitemap.xml`, `robots.txt` (blocks `/q/` customer quotes, `/api/`, dashboard), `noindex` on the quote page, and canonical URLs from `APP_URL`.
+- Tests: 23/23 pass (new: every trade page renders with its correct subtotal, canonical, FAQ schema and CTA; 404 for unknown trades; sitemap/robots; security headers). Playwright run of landing → trade page → index → plumber → CTA → prefilled generator → quote: passes at 390px and 1280px with no console errors and no horizontal scroll. The Day 4 and Day 5 flows still pass.
+
+**Learned**
+- Getting the product online is now a 15-minute job for the founder, not an engineering task.
+
+**Next (Day 7):** security review, password reset (dev outbox until Resend is keyed), onboarding polish, launch checklist, week-in-review, and the pivot/continue call.

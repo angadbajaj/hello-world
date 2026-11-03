@@ -81,3 +81,10 @@ header.top nav { flex-wrap: nowrap; }
 }
 details#bizDetails { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 details#bizDetails summary { cursor: pointer; }
+.seo { max-width: 760px; }
+.seo h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.15; margin: 4px 0 12px; }
+.seo .lead { font-size: 1.1rem; }
+.seo h2 { margin-top: 32px; }
+.cta-card { margin-top: 32px; border: 2px solid var(--accent); }
+a.trade-link { text-decoration: none; color: inherit; }
+a.trade-link:hover { border-color: var(--accent); }

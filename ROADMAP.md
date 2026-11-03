@@ -28,7 +28,8 @@ gets a link they can accept on their phone.
 - [x] **Day 5 (Nov 2):** Quality. Price book (saved items and prices the AI must reuse exactly; ☆ any quote line to save it), job photos sent to the AI, a mobile-first quote form, a 16-case eval set with automatic checks (`npm run eval`), and tighter prompt rules (quarter-hour labor, never mark up materials itself since the app applies markup, use the price book verbatim).
   - *Blocked:* actually **scoring and tuning** the prompt needs an Anthropic API key. The harness is ready; the first run should happen as soon as a key exists.
   - *Re-prioritized:* the founder tried to run the app locally and hit an old Node.js. `npm start` now checks the version and explains the fix. Being able to *see* the product clearly matters, so Day 6 leads with hosting config.
-- [ ] **Day 6:** Deploy config first (Render blueprint with a persistent disk, plus a step-by-step guide) so there can be a live link, then distribution assets (no outreach): SEO pages per trade (`/plumber-quote-template`, etc.) that lead into the free generator.
+- [x] **Day 6 (Nov 3):** Deploy: `Dockerfile`, a Render Blueprint (`render.yaml`) with a 1 GB persistent disk, and a plain-English `DEPLOY.md` (about 15 minutes, ~$7/month). Production hardening: security headers, HSTS, health check that pings the DB, and graceful shutdown on SIGTERM. Distribution (no outreach): 8 per-trade quote template pages (`/quote-template/plumber`, ...) with a worked example, FAQ (with FAQ schema), and a CTA that pre-fills the generator with that trade; an index page, `sitemap.xml`, `robots.txt` (customer quote links are `noindex`), and landing-page links to all of them.
+  - *Why these pages:* contractors search "plumbing quote template" when they need to send one. These pages answer that query honestly and hand off to the free generator at the moment of need. It's the cheapest durable acquisition channel and needs no outreach.
 - [ ] **Day 7:** Hardening + launch readiness. Security review, password reset (needs an email provider), onboarding polish, a launch checklist, and a pivot/continue decision.
 
 ## Pivot triggers (re-evaluate each session)
@@ -38,7 +39,7 @@ gets a link they can accept on their phone.
 
 ## Things only the founder can do
 - Get an Anthropic API key (`ANTHROPIC_API_KEY`).
-- Choose hosting and a domain.
+- Put it online: follow DEPLOY.md (Render, ~15 minutes). Later, a domain.
 - Create a Stripe account plus the Pro product/price and webhook (steps in README → Setting up billing). Decide on a free-trial length (my suggestion: 14 days).
 - Pick an email provider (Resend or Postmark) for alerts and password reset.
 - Outreach and launch, when you decide. Nothing has been posted or sent anywhere.

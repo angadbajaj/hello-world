@@ -32,6 +32,9 @@ If you leave out the key, it runs in demo mode with a sample quote.
 
 Requires Node 22.13+ (uses the built-in `node:sqlite`). Data is stored in `DATA_DIR/quotesmith.db`.
 
+## Put it online
+See **[DEPLOY.md](DEPLOY.md)**: a Render Blueprint (`render.yaml`) with a persistent disk, about 15 minutes and roughly $7/month. The `Dockerfile` also works on Fly.io, Railway or any container host, as long as a persistent volume is mounted at `/data`.
+
 ## Checking quote quality
 `evals/cases.json` holds realistic job notes across trades, and `evals/checks.js` has automatic checks: the contractor's rate is used, labor is in quarter hours, price book items are reused exactly, the deposit appears in the terms, the subtotal is in a sane range, and the key scope is mentioned.
 ```bash

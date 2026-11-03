@@ -5,6 +5,7 @@ import * as store from "./store.js";
 import * as billing from "./billing.js";
 import * as notify from "./notify.js";
 import { renderQuotePdf } from "./pdf.js";
+import * as seo from "./seo.js";
 
 const app = express();
 const PUBLIC = path.resolve("public");
@@ -12,6 +13,18 @@ const PROD = process.env.NODE_ENV === "production";
 const PLAN_LIMITS = { free: Number(process.env.FREE_QUOTES_PER_MONTH || 3), pro: Infinity, crew: Infinity };
 
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+  res.set({
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "x-frame-options": "DENY",
+    "permissions-policy": "geolocation=(), microphone=()",
+  });
+  if (PROD) res.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+  next();
+});
 
 // Stripe needs the raw body to verify the signature, so this route comes before the JSON parser.
 app.post("/api/stripe/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res) => {
@@ -206,7 +219,14 @@ app.get("/api/q/:id/logo", (req, res) => {
   sendDataUrl(res, brandingFor(q).logo);
 });
 
-app.get("/api/health", (req, res) => res.json({ ok: true, ai: aiEnabled(), billing: billing.billingStatus().enabled }));
+app.get("/api/health", (req, res) => {
+  try {
+    store.ping();
+  } catch {
+    return res.status(503).json({ ok: false });
+  }
+  res.json({ ok: true, ai: aiEnabled(), billing: billing.billingStatus().enabled });
+});
 
 // ---- billing ----
 
@@ -329,6 +349,16 @@ app.post("/api/q/:id/respond", (req, res) => {
   res.json({ ...store.publicView(updated), hasLogo: Boolean(brandingFor(updated).logo), branded: !isPaid(owner) });
 });
 
+// ---- public marketing pages ----
+
+app.get("/quote-template", (req, res) => res.type("html").send(seo.indexPage(origin(req))));
+app.get("/quote-template/:slug", (req, res) => {
+  const html = seo.tradePage(req.params.slug, origin(req));
+  html ? res.type("html").send(html) : res.status(404).type("html").send("Not found");
+});
+app.get("/sitemap.xml", (req, res) => res.type("application/xml").send(seo.sitemap(origin(req))));
+app.get("/robots.txt", (req, res) => res.type("text/plain").send(seo.robots(origin(req))));
+
 app.get("/q/:id/pdf", (req, res) => {
   const q = store.getQuote(req.params.id);
   const isOwner = q && req.user && req.user.id === q.userId;
@@ -341,4 +371,15 @@ app.get("/q/:id/pdf", (req, res) => {
 app.get("/q/:id", (req, res) => res.sendFile(path.join(PUBLIC, "quote.html")));
 
 const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log(`QuoteSmith on http://localhost:${port} (AI ${aiEnabled() ? "on" : "demo mode"})`));
+const server = app.listen(port, () => console.log(`QuoteSmith on http://localhost:${port} (AI ${aiEnabled() ? "on" : "demo mode"})`));
+
+// Hosts send SIGTERM before replacing the container: finish in-flight requests, then close the database cleanly.
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, () => {
+    server.close(() => {
+      store.close();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}

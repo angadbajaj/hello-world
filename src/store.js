@@ -246,3 +246,13 @@ export function updatePriceItem(userId, id, item) {
 export function deletePriceItem(userId, id) {
   return db.prepare("DELETE FROM price_items WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
 }
+
+// ---- lifecycle ----
+
+export function ping() {
+  db.prepare("SELECT 1").get();
+}
+
+export function close() {
+  db.close();
+}

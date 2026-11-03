@@ -1,0 +1,32 @@
+# Render Blueprint: New → Blueprint → pick this repo. See DEPLOY.md.
+services:
+  - type: web
+    name: quotesmith
+    runtime: docker
+    plan: starter            # persistent disks need a paid instance
+    healthCheckPath: /api/health
+    disk:
+      name: quotesmith-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: APP_URL
+        sync: false          # e.g. https://quotesmith.onrender.com, or your own domain
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_TRIAL_DAYS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
