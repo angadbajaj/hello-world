@@ -51,3 +51,12 @@ export function quoteResponded(owner, q, appUrl) {
     html: `<p><strong>${esc(who)}</strong> ${accepted ? "accepted" : "declined"} <a href="${esc(appUrl)}/q/${esc(q.id)}">${esc(quoteLabel(q))}</a>.</p>${q.customerNote ? `<blockquote>${esc(q.customerNote)}</blockquote>` : ""}`,
   });
 }
+
+export function passwordReset(to, link) {
+  fireAndForget({
+    to,
+    subject: "Reset your QuoteSmith password",
+    text: `Someone asked to reset the password for this QuoteSmith account. If it was you, open this link within an hour:\n\n${link}\n\nIf it wasn't you, ignore this email and nothing will change.`,
+    html: `<p>Someone asked to reset the password for this QuoteSmith account. If it was you, <a href="${esc(link)}">choose a new password</a> within an hour.</p><p>If it wasn't you, ignore this email and nothing will change.</p>`,
+  });
+}

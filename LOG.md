@@ -100,3 +100,25 @@ Totals labels sit too close together in the mobile editor.
 - Getting the product online is now a 15-minute job for the founder, not an engineering task.
 
 **Next (Day 7):** security review, password reset (dev outbox until Resend is keyed), onboarding polish, launch checklist, week-in-review, and the pivot/continue call.
+
+## 2026-11-04: Day 7, security, password reset, onboarding, launch plan
+**Security review** (read every route; fixed what mattered):
+- AI-provider failures returned the SDK's raw error text to the browser. Now only our own safe messages are shown, and everything else gets "The quote service is busy right now…". Tested by pointing the SDK at a dead port.
+- Added a Content-Security-Policy (`default-src 'self'`, no objects, no framing, no third-party scripts). Every browser flow from days 2–6 was re-run under it with zero console errors.
+- Login for an unknown email skipped the password hash, so its timing revealed which emails have accounts. It now always hashes.
+- Saved quotes rejected nothing numeric. Negative or absurd quantities/prices and >200 lines are now refused.
+- Rate-limiter memory grew forever, and expired sessions were never deleted. Both are now purged every 10 minutes.
+- Reviewed and OK: cookies (HttpOnly, SameSite=Lax, Secure in prod), cross-account access (tests), customer view hides secrets, all HTML output escaped, logo/photo types restricted, webhook signatures verified, open-redirect guard on `?next=`.
+- Accepted risks (noted in LAUNCH.md): no email verification at signup; signup says "email already has an account" (normal UX, minor enumeration).
+
+**Password reset**: "Forgot your password?" on login → emailed link (outbox until Resend is keyed). Tokens are random, stored only as SHA-256 hashes, single-use, expire in 1 hour, and are stripped from the address bar on load. Resetting signs the account out everywhere. Same response whether or not the email exists.
+
+**Onboarding**: the "Get set up" checklist on the dashboard covers business name + rate → first quote sent → 3 price book items → deposit + payment link. It updates live and disappears when done.
+
+**Launch**: `LAUNCH.md` is an ordered checklist split into what's built vs what needs the founder.
+
+**Decision**: continue, but reposition from "AI writes quotes" (crowded: many 2026 AI estimator apps from ~$8/mo, Joist ~$10–32) to "win more of the jobs you quote" (accept link, open alerts, deposits, follow-ups, win rate). Full reasoning and the week-2 plan are in ROADMAP.md.
+
+Tests: 27/27 pass (new: reset flow incl. enumeration-safety, single use and session revocation; numeric validation; CSP; generic AI errors). Playwright: checklist progress + forgot → email link → new password → reused-link error at 390px and 1280px with no console errors. All earlier flows (days 2–6) still pass under the CSP.
+
+**Next (Day 8):** automatic follow-ups for unopened/unanswered quotes.

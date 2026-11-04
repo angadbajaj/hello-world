@@ -49,6 +49,11 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS price_items_user ON price_items(user_id);
+  CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL
+  );
 `);
 
 // Additive migrations for databases created by earlier versions.
@@ -97,10 +102,48 @@ export function createUser(email, password) {
   return getUser(id);
 }
 
+// Hashed once at startup so a login for an unknown email takes as long as a real one,
+// which stops timing from revealing which emails have accounts.
+const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString("hex"));
+
 export function verifyUser(email, password) {
   const row = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
-  if (!row || !checkPassword(password, row.pass_hash)) return null;
-  return toUser(row);
+  const ok = checkPassword(password, row ? row.pass_hash : DUMMY_HASH);
+  return row && ok ? toUser(row) : null;
+}
+
+export function userByEmail(email) {
+  return toUser(db.prepare("SELECT * FROM users WHERE email = ?").get(String(email).toLowerCase()));
+}
+
+// ---- password reset ----
+
+const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
+const RESET_MINUTES = 60;
+
+// Returns the raw token for the email link; only its hash is stored.
+export function createPasswordReset(userId) {
+  const token = newId(24);
+  db.prepare("DELETE FROM password_resets WHERE user_id = ?").run(userId);
+  db.prepare("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
+    .run(sha256(token), userId, new Date(Date.now() + RESET_MINUTES * 60e3).toISOString());
+  return token;
+}
+
+// Single use: sets the new password and signs the account out everywhere.
+export function resetPassword(token, password) {
+  const row = db.prepare("SELECT user_id, expires_at FROM password_resets WHERE token_hash = ?").get(sha256(String(token)));
+  if (!row || row.expires_at < now()) return null;
+  db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(hashPassword(password), row.user_id);
+  db.prepare("DELETE FROM password_resets WHERE user_id = ?").run(row.user_id);
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.user_id);
+  return getUser(row.user_id);
+}
+
+export function purgeExpired() {
+  const t = now();
+  db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(t);
+  db.prepare("DELETE FROM password_resets WHERE expires_at < ?").run(t);
 }
 
 export function getUser(id) {

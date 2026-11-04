@@ -17,6 +17,15 @@
       <p class="error" id="err"></p>
       <button class="btn" id="go" type="submit" style="width:100%">Create account</button>
       <p class="muted" style="text-align:center"><a href="#" id="toggle">Already have an account? Log in</a></p>
+      <p class="muted hidden" style="text-align:center" id="forgotWrap"><a href="#" id="forgot">Forgot your password?</a></p>
+    </form>
+    <form id="forgotForm" class="card hidden" style="max-width:420px;margin:24px auto">
+      <h2 style="margin-top:0">Reset your password</h2>
+      <p class="muted">Enter your account email and we'll send you a link to choose a new password.</p>
+      <label for="forgotEmail">Email</label><input id="forgotEmail" type="email" autocomplete="email" required />
+      <p id="forgotMsg" class="muted"></p>
+      <button class="btn" type="submit" style="width:100%">Send reset link</button>
+      <p class="muted" style="text-align:center"><a href="#login" id="backToLogin">Back to log in</a></p>
     </form>
   </div>
 <script type="module">
@@ -35,11 +44,29 @@ function setMode(m) {
   $("password").autocomplete = login ? "current-password" : "new-password";
   $("toggle").textContent = login ? "New here? Create a free account" : "Already have an account? Log in";
   $("err").textContent = "";
+  $("forgotWrap").classList.toggle("hidden", !login);
 }
 $("toggle").onclick = (e) => { e.preventDefault(); setMode(mode === "login" ? "signup" : "login"); };
 setMode(mode);
 
 getMe().then((me) => me.user && location.replace(dest));
+
+$("forgot").onclick = (e) => {
+  e.preventDefault();
+  $("forgotEmail").value = $("email").value;
+  $("form").classList.add("hidden"); $("forgotForm").classList.remove("hidden"); $("forgotEmail").focus();
+};
+$("backToLogin").onclick = (e) => {
+  e.preventDefault();
+  $("forgotForm").classList.add("hidden"); $("form").classList.remove("hidden"); setMode("login");
+};
+$("forgotForm").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/password/forgot", { method: "POST", body: { email: $("forgotEmail").value } });
+    $("forgotMsg").textContent = "If that email has an account, a reset link is on its way. Check your inbox (and spam).";
+  } catch (err) { $("forgotMsg").textContent = err.message; }
+};
 
 $("form").onsubmit = async (e) => {
   e.preventDefault();

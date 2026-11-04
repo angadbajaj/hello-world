@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Choose a new password - QuoteSmith</title>
+  <meta name="robots" content="noindex" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top"><a class="logo" href="/">Quote<span>Smith</span></a></header>
+    <form id="form" class="card" style="max-width:420px;margin:24px auto">
+      <h2 style="margin-top:0">Choose a new password</h2>
+      <label for="password">New password (8+ characters)</label>
+      <input id="password" type="password" autocomplete="new-password" minlength="8" required />
+      <p class="error" id="err"></p>
+      <button class="btn" id="go" type="submit" style="width:100%">Save and log in</button>
+      <p class="muted" style="text-align:center"><a href="/login#login">Back to log in</a></p>
+    </form>
+  </div>
+<script type="module">
+import { api } from "/nav.js";
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("token") || "";
+// Keep the token out of browser history and any later Referer header.
+history.replaceState(null, "", "/reset");
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  $("go").disabled = true;
+  try {
+    await api("/api/password/reset", { method: "POST", body: { token, password: $("password").value } });
+    location.href = "/dashboard";
+  } catch (err) {
+    $("err").innerHTML = "";
+    $("err").append(err.message + " ");
+    const a = Object.assign(document.createElement("a"), { href: "/login#login", textContent: "Request a new link" });
+    $("err").append(a);
+  } finally {
+    $("go").disabled = false;
+  }
+};
+</script>
+</body>
+</html>

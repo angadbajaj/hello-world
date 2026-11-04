@@ -10,6 +10,8 @@
   <div class="wrap">
     <header class="top"><a class="logo" href="/">Quote<span>Smith</span></a><nav id="nav"></nav></header>
 
+    <div id="setup" class="card setup hidden" style="margin-bottom:16px"></div>
+
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <h2 style="margin:0">Your quotes</h2>
@@ -202,6 +204,7 @@ function renderPb() {
       <td class="num"><input data-k="unit_price" type="number" step="0.01" min="0" value="${it.unit_price}" style="width:90px" aria-label="Price" /></td>
       <td><button type="button" class="btn ghost" data-del aria-label="Delete item">×</button></td></tr>`).join("")
     : `<tr><td colspan="5" class="muted">No items yet.</td></tr>`;
+  renderSetup();
 }
 renderPb();
 $("pbRows").addEventListener("change", async (e) => {
@@ -270,10 +273,26 @@ $("logoBody").addEventListener("click", async (e) => {
 });
 renderLogo(me.user);
 
+// ---- first-run checklist: hidden once everything's done ----
+function renderSetup() {
+  const p = me.user.profile;
+  const steps = [
+    { done: Boolean(p.businessName && p.hourlyRate), label: "Add your business name and hourly rate", href: "#profile" },
+    { done: quotes.some((q) => q.status !== "draft"), label: "Send your first quote", href: "/app" },
+    { done: pb.length >= 3, label: "Save 3 items you use often to your price book", href: "#priceBook" },
+    { done: Boolean(p.paymentLink && p.depositPercent), label: "Add a deposit and payment link so customers can book on the spot", href: "#profile" },
+  ];
+  const left = steps.filter((x) => !x.done).length;
+  $("setup").classList.toggle("hidden", left === 0);
+  $("setup").innerHTML = `<h2 style="margin-top:0">Get set up <span class="muted" style="font-size:1rem">${steps.length - left} of ${steps.length} done</span></h2>
+    <ol class="checklist">${steps.map((x) => `<li class="${x.done ? "done" : ""}">${x.done ? x.label : `<a href="${x.href}">${x.label}</a>`}</li>`).join("")}</ol>`;
+}
+
 $("profile").onsubmit = async (e) => {
   e.preventDefault();
   try {
-    await api("/api/me/profile", { method: "PUT", body: Object.fromEntries(FIELDS.map((f) => [f, $(f).value])) });
+    const { user } = await api("/api/me/profile", { method: "PUT", body: Object.fromEntries(FIELDS.map((f) => [f, $(f).value])) });
+    me.user.profile = user.profile; renderSetup();
     $("saved").textContent = "Saved";
   } catch (err) { $("saved").textContent = err.message; }
 };

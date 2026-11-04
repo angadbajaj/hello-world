@@ -88,3 +88,8 @@ details#bizDetails summary { cursor: pointer; }
 .cta-card { margin-top: 32px; border: 2px solid var(--accent); }
 a.trade-link { text-decoration: none; color: inherit; }
 a.trade-link:hover { border-color: var(--accent); }
+.setup { border: 2px solid var(--accent); }
+.checklist { margin: 0; padding-left: 22px; }
+.checklist li { padding: 4px 0; }
+.checklist li.done { color: var(--muted); text-decoration: line-through; }
+.checklist li.done::marker { content: "✓  "; color: var(--ok); }

@@ -1,6 +1,6 @@
 import express from "express";
 import path from "node:path";
-import { generateQuote, aiEnabled, QuoteSchema } from "./ai.js";
+import { generateQuote, aiEnabled, QuoteSchema, QuoteError } from "./ai.js";
 import * as store from "./store.js";
 import * as billing from "./billing.js";
 import * as notify from "./notify.js";
@@ -21,6 +21,9 @@ app.use((req, res, next) => {
     "referrer-policy": "strict-origin-when-cross-origin",
     "x-frame-options": "DENY",
     "permissions-policy": "geolocation=(), microphone=()",
+    // Pages use small inline module scripts, so 'unsafe-inline' stays for scripts; everything else is locked to this origin.
+    "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
   });
   if (PROD) res.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   next();
@@ -46,8 +49,10 @@ app.use(express.static(PUBLIC, { extensions: ["html"] }));
 
 // ---- helpers ----
 
+const limiters = [];
 function limiter(name, max, windowMs) {
   const hits = new Map();
+  limiters.push({ hits, windowMs });
   return (req, res, next) => {
     const now = Date.now();
     const recent = (hits.get(req.ip) || []).filter((t) => now - t < windowMs);
@@ -56,6 +61,16 @@ function limiter(name, max, windowMs) {
     next();
   };
 }
+// Forget idle IPs and expired sessions so memory and the database don't grow forever.
+setInterval(() => {
+  const now = Date.now();
+  for (const { hits, windowMs } of limiters) {
+    for (const [ip, times] of hits) if (!times.some((t) => now - t < windowMs)) hits.delete(ip);
+  }
+  store.purgeExpired();
+}, 10 * 60e3).unref();
+store.purgeExpired();
+
 const quoteLimiter = limiter("quotes", Number(process.env.QUOTES_PER_HOUR || 20), 3600e3);
 const anonLimiter = limiter("quotes without an account. Sign up free to keep going", Number(process.env.ANON_QUOTES_PER_DAY || 2), 864e5);
 const authLimiter = limiter("login attempts", 10, 15 * 60e3);
@@ -125,6 +140,22 @@ app.post("/api/logout", (req, res) => {
   if (token) store.deleteSession(token);
   res.setHeader("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   res.json({ ok: true });
+});
+
+// Always answers the same way, so it can't be used to discover which emails have accounts.
+app.post("/api/password/forgot", authLimiter, (req, res) => {
+  const user = store.userByEmail(str(req.body?.email, 200));
+  if (user) notify.passwordReset(user.email, `${origin(req)}/reset?token=${store.createPasswordReset(user.id)}`);
+  res.json({ ok: true });
+});
+
+app.post("/api/password/reset", authLimiter, (req, res) => {
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  const user = store.resetPassword(str(req.body?.token, 100), password);
+  if (!user) return res.status(400).json({ error: "This reset link has expired or was already used." });
+  setSession(res, user.id);
+  res.json({ user });
 });
 
 app.get("/api/me", (req, res) => res.json(req.user ? { user: req.user, usage: usage(req.user), billing: billing.billingStatus() } : { user: null }));
@@ -290,8 +321,8 @@ app.post("/api/quotes", quoteLimiter, (req, res, next) => (req.user ? next() : a
     const quote = await generateQuote(input, { priceBook, photos });
     res.json(store.createQuote({ input, quote, userId: req.user?.id }));
   } catch (err) {
-    console.error(err);
-    res.status(502).json({ error: err.message || "Quote generation failed." });
+    console.error("quote generation:", err);
+    res.status(502).json({ error: err instanceof QuoteError ? err.message : "The quote service is busy right now. Please try again in a minute." });
   }
 });
 
@@ -307,6 +338,9 @@ app.put("/api/quotes/:id", requireUser, (req, res) => {
   if (!canEdit(q, req, req.body?.key)) return res.status(404).json({ error: "Not found" });
   const parsed = QuoteSchema.safeParse(req.body.quote);
   if (!parsed.success) return res.status(400).json({ error: "Invalid quote data" });
+  const badLine = parsed.data.line_items.find((l) => !(l.quantity >= 0 && l.quantity <= 100_000 && l.unit_price >= 0 && l.unit_price <= 10_000_000));
+  if (badLine) return res.status(400).json({ error: `Check the quantity and price on "${badLine.description || "a line"}".` });
+  if (parsed.data.line_items.length > 200) return res.status(400).json({ error: "Too many line items." });
   const patch = {};
   if (!q.userId) {
     if (overLimit(req.user)) return res.status(402).json(LIMIT_ERROR);

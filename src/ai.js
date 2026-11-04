@@ -39,6 +39,10 @@ Rules:
 - Terms: short and standard (validity period, deposit, payment timing) unless the contractor specifies their own.
 - Plain, confident language. No marketing fluff.`;
 
+// Errors whose message is safe and useful to show the contractor. Anything else (network, auth,
+// rate limits from the API) gets a generic message so internal details never reach the browser.
+export class QuoteError extends Error {}
+
 let client;
 export function aiEnabled() {
   return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
@@ -81,8 +85,8 @@ export async function generateQuote(input, { priceBook = [], photos = [] } = {})
     messages: [{ role: "user", content }],
   });
 
-  if (response.stop_reason === "refusal") throw new Error("The AI declined to write this quote.");
-  if (!response.parsed_output) throw new Error("The AI returned an unreadable quote. Please try again.");
+  if (response.stop_reason === "refusal") throw new QuoteError("The AI declined to write this quote.");
+  if (!response.parsed_output) throw new QuoteError("The AI returned an unreadable quote. Please try again.");
   return response.parsed_output;
 }
 
