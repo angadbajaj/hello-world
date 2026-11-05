@@ -64,6 +64,10 @@ for (const [col, type] of [["stripe_customer_id", "TEXT"], ["stripe_subscription
 }
 const quoteCols = new Set(db.prepare("PRAGMA table_info(quotes)").all().map((c) => c.name));
 if (!quoteCols.has("number")) db.exec("ALTER TABLE quotes ADD COLUMN number INTEGER");
+for (const col of ["sent_at", "emailed_at", "nudged_unopened_at", "nudged_unanswered_at", "reminded_customer_at"]) {
+  if (!quoteCols.has(col)) db.exec(`ALTER TABLE quotes ADD COLUMN ${col} TEXT`);
+}
+if (!quoteCols.has("sent_at")) db.exec("UPDATE quotes SET sent_at = COALESCE(updated_at, created_at) WHERE status != 'draft'");
 
 const now = () => new Date().toISOString();
 const newId = (bytes) => crypto.randomBytes(bytes).toString("base64url");
@@ -209,6 +213,8 @@ function toQuote(row) {
     input: JSON.parse(row.input), quote: JSON.parse(row.quote),
     createdAt: row.created_at, updatedAt: row.updated_at, viewedAt: row.viewed_at,
     respondedAt: row.responded_at, signature: row.signature, customerNote: row.customer_note,
+    sentAt: row.sent_at, emailedAt: row.emailed_at, nudgedUnopenedAt: row.nudged_unopened_at,
+    nudgedUnansweredAt: row.nudged_unanswered_at, remindedCustomerAt: row.reminded_customer_at,
   };
 }
 
@@ -226,7 +232,9 @@ export function getQuote(id) {
 }
 
 const COLUMNS = { status: "status", input: "input", quote: "quote", userId: "user_id", viewedAt: "viewed_at",
-  respondedAt: "responded_at", signature: "signature", customerNote: "customer_note", claimedAt: "claimed_at", number: "number" };
+  respondedAt: "responded_at", signature: "signature", customerNote: "customer_note", claimedAt: "claimed_at", number: "number",
+  sentAt: "sent_at", emailedAt: "emailed_at", nudgedUnopenedAt: "nudged_unopened_at", nudgedUnansweredAt: "nudged_unanswered_at",
+  remindedCustomerAt: "reminded_customer_at" };
 
 export function updateQuote(id, patch) {
   const sets = [];
@@ -256,8 +264,9 @@ export function quotesThisMonth(userId) {
 
 // What the customer is allowed to see.
 export function publicView(q) {
-  const { editKey, userId, ...rest } = q;
-  return rest;
+  const { editKey, userId, emailedAt, nudgedUnopenedAt, nudgedUnansweredAt, remindedCustomerAt, ...rest } = q;
+  const { customerEmail, ...input } = rest.input;
+  return { ...rest, input };
 }
 
 // ---- price book ----
@@ -298,4 +307,11 @@ export function ping() {
 
 export function close() {
   db.close();
+}
+
+// Sent, unanswered quotes owned by paid accounts: the pool the follow-up job looks at.
+export function followUpCandidates() {
+  return db.prepare(`SELECT q.* FROM quotes q JOIN users u ON u.id = q.user_id
+    WHERE q.status = 'sent' AND u.plan != 'free'
+      AND (q.nudged_unopened_at IS NULL OR q.nudged_unanswered_at IS NULL)`).all().map(toQuote);
 }

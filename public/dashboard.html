@@ -70,6 +70,9 @@
         <div style="grid-column: span 2"><label for="paymentLink">Payment link (Stripe, Square, PayPal...)</label><input id="paymentLink" type="url" placeholder="https://buy.stripe.com/..." /></div>
       </div>
       <p class="muted" style="font-size:.9rem">When a customer accepts, they're shown the deposit amount and a "Pay deposit" button that opens this link.</p>
+      <h3>Follow-ups <span class="status" id="followPro">Pro</span></h3>
+      <p class="muted" style="font-size:.9rem">On Pro, we email you when a quote hasn't been opened after 2 days, or was opened but not answered after 3, so you know exactly who to call.</p>
+      <label class="check"><input id="remindCustomers" type="checkbox" /> Also send the customer one friendly reminder from me (needs their email on the quote)</label>
       <div class="row" style="margin-top:12px">
         <button class="btn" type="submit">Save profile</button><span id="saved" class="muted"></span>
       </div>
@@ -92,6 +95,9 @@ renderNav(me);
 $("who").textContent = `Signed in as ${me.user.email} (${me.user.plan} plan)`;
 $("logout").onclick = (e) => { e.preventDefault(); logout(); };
 for (const f of FIELDS) if (me.user.profile[f] != null) $(f).value = me.user.profile[f];
+$("remindCustomers").checked = Boolean(me.user.profile.remindCustomers);
+$("remindCustomers").disabled = me.user.plan === "free";
+$("followPro").classList.toggle("hidden", me.user.plan !== "free");
 
 const ago = (iso) => {
   if (!iso) return "";
@@ -128,14 +134,14 @@ $("list").innerHTML = quotes.length
       <td><a href="/app?id=${q.id}">${esc(q.quote.title)}</a><div class="muted" style="font-size:.85rem">${q.number ? `#${q.number} · ` : ""}${new Date(q.createdAt).toLocaleDateString()}</div></td>
       <td>${esc(q.input.customerName || "-")}</td>
       <td class="num">${money(valueOf(q), q.input.currency || "USD")}</td>
-      <td><span class="status ${s.cls}">${esc(s.label)}</span></td>
+      <td><span class="status ${s.cls}">${esc(s.label)}</span>${q.followUp ? `<div class="follow">Follow up: ${esc(q.followUp)}</div>` : ""}</td>
       <td>${q.status !== "draft" ? `<a href="/q/${q.id}">Customer view</a>` : ""}</td></tr>`; }).join("")}
     </tbody></table>`
   : `<p class="muted">No quotes yet. <a href="/app">Write your first one</a>, it takes about a minute.</p>`;
 
 // ---- plan & billing ----
 const PLANS = {
-  pro: { name: "Pro", price: "$19/mo", pitch: "Unlimited quotes, your logo on quotes and PDFs, no QuoteSmith branding, open alerts." },
+  pro: { name: "Pro", price: "$19/mo", pitch: "Unlimited quotes, open alerts, automatic follow-ups, your logo, no QuoteSmith branding." },
   crew: { name: "Crew", price: "$49/mo", pitch: "Up to 5 users and a shared price book." },
 };
 const params = new URLSearchParams(location.search);
@@ -291,7 +297,7 @@ function renderSetup() {
 $("profile").onsubmit = async (e) => {
   e.preventDefault();
   try {
-    const { user } = await api("/api/me/profile", { method: "PUT", body: Object.fromEntries(FIELDS.map((f) => [f, $(f).value])) });
+    const { user } = await api("/api/me/profile", { method: "PUT", body: { ...Object.fromEntries(FIELDS.map((f) => [f, $(f).value])), remindCustomers: $("remindCustomers").checked } });
     me.user.profile = user.profile; renderSetup();
     $("saved").textContent = "Saved";
   } catch (err) { $("saved").textContent = err.message; }

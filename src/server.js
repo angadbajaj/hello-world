@@ -6,6 +6,7 @@ import * as billing from "./billing.js";
 import * as notify from "./notify.js";
 import { renderQuotePdf } from "./pdf.js";
 import * as seo from "./seo.js";
+import { runFollowUps, needsFollowUp } from "./followups.js";
 
 const app = express();
 const PUBLIC = path.resolve("public");
@@ -73,9 +74,10 @@ store.purgeExpired();
 
 const quoteLimiter = limiter("quotes", Number(process.env.QUOTES_PER_HOUR || 20), 3600e3);
 const anonLimiter = limiter("quotes without an account. Sign up free to keep going", Number(process.env.ANON_QUOTES_PER_DAY || 2), 864e5);
-const authLimiter = limiter("login attempts", 10, 15 * 60e3);
+const authLimiter = limiter("login attempts", Number(process.env.AUTH_ATTEMPTS_PER_15MIN || 10), 15 * 60e3);
 
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
 const COOKIE = "qs_session";
 function readCookie(req, name) {
@@ -171,6 +173,7 @@ app.put("/api/me/profile", requireUser, (req, res) => {
   const link = str(b.paymentLink, 500);
   if (link && !/^https:\/\/[^\s<>"']+$/.test(link)) return res.status(400).json({ error: "Payment link must start with https://" });
   profile.paymentLink = link;
+  profile.remindCustomers = b.remindCustomers === true || b.remindCustomers === "true";
   res.json({ user: store.updateProfile(req.user.id, profile) });
 });
 
@@ -288,7 +291,8 @@ app.post("/api/billing/portal", requireUser, async (req, res) => {
 });
 
 app.get("/api/quotes", requireUser, (req, res) => {
-  res.json({ quotes: store.listQuotes(req.user.id), usage: usage(req.user) });
+  const now = Date.now();
+  res.json({ quotes: store.listQuotes(req.user.id).map((q) => ({ ...q, followUp: needsFollowUp(q, now) })), usage: usage(req.user) });
 });
 
 app.post("/api/quotes", quoteLimiter, (req, res, next) => (req.user ? next() : anonLimiter(req, res, next)), async (req, res) => {
@@ -305,8 +309,10 @@ app.post("/api/quotes", quoteLimiter, (req, res, next) => (req.user ? next() : a
     terms: str(b.terms, 2000),
     notes: str(b.notes, 6000),
     customerName: str(b.customerName, 120),
+    customerEmail: str(b.customerEmail, 200),
     ...paymentTerms(req.user),
   };
+  if (input.customerEmail && !EMAIL_RE.test(input.customerEmail)) return res.status(400).json({ error: "Check the customer's email address." });
   const photos = [];
   for (const p of Array.isArray(b.photos) ? b.photos.slice(0, 3) : []) {
     const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(p || ""));
@@ -349,8 +355,31 @@ app.put("/api/quotes/:id", requireUser, (req, res) => {
   const taxRate = Number(req.body.taxRate);
   const input = { ...q.input, taxRate: Number.isFinite(taxRate) ? taxRate : q.input.taxRate };
   if (!q.userId) Object.assign(input, paymentTerms(req.user));
+  if (typeof req.body.customerEmail === "string") {
+    input.customerEmail = str(req.body.customerEmail, 200);
+    if (input.customerEmail && !EMAIL_RE.test(input.customerEmail)) return res.status(400).json({ error: "Check the customer's email address." });
+  }
   Object.assign(patch, { quote: parsed.data, input, status: q.status === "draft" ? "sent" : q.status });
+  if (q.status === "draft") patch.sentAt = new Date().toISOString();
   res.json(store.updateQuote(q.id, patch));
+});
+
+// Emails the quote link to the customer from the contractor (replies go to the contractor).
+app.post("/api/quotes/:id/email", requireUser, async (req, res) => {
+  const q = store.getQuote(req.params.id);
+  if (!q || q.userId !== req.user.id) return res.status(404).json({ error: "Not found" });
+  if (q.status === "draft") return res.status(400).json({ error: "Save the quote first." });
+  if (!EMAIL_RE.test(q.input.customerEmail || "")) return res.status(400).json({ error: "Add the customer's email address first." });
+  if (q.emailedAt && Date.now() - Date.parse(q.emailedAt) < 10 * 60e3) {
+    return res.status(429).json({ error: "This quote was just emailed. Give it a few minutes before sending again." });
+  }
+  try {
+    await notify.quoteToCustomer(req.user, q, origin(req));
+  } catch (err) {
+    console.error("email quote:", err.message);
+    return res.status(502).json({ error: "Couldn't send the email right now. You can copy the link and text it instead." });
+  }
+  res.json(store.updateQuote(q.id, { emailedAt: new Date().toISOString() }));
 });
 
 // ---- customer side ----
@@ -406,6 +435,14 @@ app.get("/q/:id", (req, res) => res.sendFile(path.join(PUBLIC, "quote.html")));
 
 const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, () => console.log(`QuoteSmith on http://localhost:${port} (AI ${aiEnabled() ? "on" : "demo mode"})`));
+
+// Pro follow-up emails. Links need a public URL, so in production this only runs once APP_URL is set.
+const followUpUrl = process.env.APP_URL || (PROD ? null : `http://localhost:${port}`);
+if (followUpUrl) {
+  setInterval(() => {
+    runFollowUps({ appUrl: followUpUrl }).catch((err) => console.error("follow-ups:", err));
+  }, Number(process.env.FOLLOWUP_INTERVAL_MS || 15 * 60e3)).unref();
+}
 
 // Hosts send SIGTERM before replacing the container: finish in-flight requests, then close the database cleanly.
 for (const signal of ["SIGTERM", "SIGINT"]) {

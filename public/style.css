@@ -93,3 +93,6 @@ a.trade-link:hover { border-color: var(--accent); }
 .checklist li { padding: 4px 0; }
 .checklist li.done { color: var(--muted); text-decoration: line-through; }
 .checklist li.done::marker { content: "✓  "; color: var(--ok); }
+.follow { color: #c2410c; font-size: .8rem; font-weight: 700; margin-top: 4px; }
+label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+label.check input { width: auto; margin-top: 4px; }

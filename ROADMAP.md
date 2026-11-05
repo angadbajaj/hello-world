@@ -31,7 +31,8 @@ gets a link they can accept on their phone.
 - [x] **Day 6 (Nov 3):** Deploy: `Dockerfile`, a Render Blueprint (`render.yaml`) with a 1 GB persistent disk, and a plain-English `DEPLOY.md` (about 15 minutes, ~$7/month). Production hardening: security headers, HSTS, health check that pings the DB, and graceful shutdown on SIGTERM. Distribution (no outreach): 8 per-trade quote template pages (`/quote-template/plumber`, ...) with a worked example, FAQ (with FAQ schema), and a CTA that pre-fills the generator with that trade; an index page, `sitemap.xml`, `robots.txt` (customer quote links are `noindex`), and landing-page links to all of them.
   - *Why these pages:* contractors search "plumbing quote template" when they need to send one. These pages answer that query honestly and hand off to the free generator at the moment of need. It's the cheapest durable acquisition channel and needs no outreach.
 - [x] **Day 7 (Nov 4):** Security review and fixes (generic AI errors, CSP, timing-safe login, line-item limits, limiter/session cleanup), password reset (hashed single-use tokens, 1 hour, signs out all sessions, no email enumeration), a first-run "Get set up" checklist on the dashboard, `LAUNCH.md`, and the continue/pivot decision below.
-- [ ] **Day 8 (Nov 5):** Automatic follow-ups (Pro): if a sent quote hasn't been opened in 2 days, or opened but not answered in 3, nudge the contractor ("call Jane now") and optionally send the customer one polite reminder from the contractor. This directly raises win rate, which is the number we sell.
+- [x] **Day 8 (Nov 5):** Automatic follow-ups (Pro): if a sent quote hasn't been opened in 2 days, or opened but not answered in 3, nudge the contractor ("call Jane now") and optionally send the customer one polite reminder from the contractor. This directly raises win rate, which is the number we sell.
+  - *Shipped with it:* "Email quote" for every plan (sent as "Your Business via QuoteSmith", replies go to the contractor), customer email on the quote form, "Follow up" badges on the dashboard for every plan (automatic emails are Pro), and landing/pricing copy rewritten around "win more of the jobs you quote".
 
 ## Decision after week 1 (Nov 4): continue, and reposition
 **What I checked:** the market for "AI writes your estimate" is crowded. In 2026 alone there are many App Store apps (Trade Estimate AI, ContractorIQ at ~$8/mo, Estimr, SimplyWise, QuoteDrop, and others), and Joist covers basic quoting at about $10–32/mo. Field-service suites (Jobber from ~$29–49, Housecall Pro from ~$59–79) bundle estimates with scheduling. (Third-party pricing figures; vendors weren't checked directly.)
@@ -47,11 +48,9 @@ gets a link they can accept on their phone.
 4. **Pivot signal to watch after launch:** if contractors use it to write quotes but rarely send the customer link, the follow-up/acceptance loop isn't valued. Then narrow to one trade where we can win on trade-specific pricing, or move to the adjacent "AI follow-up/booking assistant for trades" idea.
 
 ## Week 2 plan (proposed)
-- Automatic follow-ups (Pro), started Day 8
 - Stripe Connect deposits (platform fee), replacing "paste your own payment link"
 - Quote → invoice in one tap after the job
 - First real eval run + prompt tuning (needs the API key)
-- Landing page rewrite around "win the job"
 - Small admin page: signups, quotes sent/viewed/accepted, upgrades
 
 ## Pivot triggers (re-evaluate each session)

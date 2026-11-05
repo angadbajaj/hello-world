@@ -15,7 +15,10 @@
 
     <form id="form" class="card">
       <h2 style="margin-top:0">Describe the job</h2>
-      <label for="customerName">Customer</label><input id="customerName" name="customerName" placeholder="Jane Doe" />
+      <div class="grid">
+        <div><label for="customerName">Customer</label><input id="customerName" name="customerName" placeholder="Jane Doe" autocomplete="off" /></div>
+        <div><label for="customerEmail">Customer email <span class="muted">(optional)</span></label><input id="customerEmail" name="customerEmail" type="email" placeholder="jane@example.com" autocomplete="off" /></div>
+      </div>
       <label for="notes">Job notes (rough is fine)</label>
       <textarea id="notes" name="notes" placeholder="Bathroom: replace leaking toilet fill valve + wax ring, re-seat toilet. Vanity tap drips, replace cartridge (Moen). Approx 2.5 hrs. Parts ~$60."></textarea>
       <div class="photos">
@@ -91,7 +94,11 @@
           </div>
         </div>
         <div id="share" class="hidden" style="margin-top:16px">
-          <label for="shareUrl">Send this link to your customer</label>
+          <label for="sendEmail">Email it to your customer</label>
+          <div class="row"><input id="sendEmail" type="email" placeholder="customer@example.com" style="flex:1;min-width:180px" />
+            <button class="btn" id="emailBtn" type="button">Email quote</button></div>
+          <p class="muted" id="emailMsg" style="font-size:.9rem;margin:6px 0 0">Sent from your business name. Replies come straight to you.</p>
+          <label for="shareUrl">Or copy the link and text it</label>
           <div class="row"><input id="shareUrl" readonly style="flex:1" /><button class="btn ghost" id="copy" type="button">Copy</button></div>
           <div class="row" style="margin-top:8px"><a class="btn ghost" id="pdfLink" href="#" target="_blank">Download PDF</a><a id="previewLink" href="#" target="_blank">Preview as customer</a></div>
         </div>
@@ -297,10 +304,27 @@ $("authGo").onclick = async () => {
 
 function showShare() {
   $("share").classList.remove("hidden");
+  if (!$("sendEmail").value) $("sendEmail").value = rec.input.customerEmail || "";
+  if (rec.emailedAt) $("emailMsg").textContent = `Emailed ${new Date(rec.emailedAt).toLocaleString()}.`;
   $("shareUrl").value = `${location.origin}/q/${rec.id}`;
   $("pdfLink").href = `/q/${rec.id}/pdf`;
   $("previewLink").href = `/q/${rec.id}`;
 }
+$("emailBtn").onclick = async () => {
+  $("emailMsg").classList.remove("error");
+  $("emailBtn").disabled = true;
+  try {
+    // Save first so the email address (and any last edits) are stored with the quote.
+    rec = await api(`/api/quotes/${rec.id}`, { method: "PUT",
+      body: { key: rec.editKey, quote: collect(), taxRate: Number($("taxRate2").value) || 0, customerEmail: $("sendEmail").value } });
+    rec = await api(`/api/quotes/${rec.id}/email`, { method: "POST" });
+    $("emailMsg").textContent = `Sent to ${rec.input.customerEmail}. You'll see when they open it on your dashboard.`;
+  } catch (err) {
+    $("emailMsg").textContent = err.message; $("emailMsg").classList.add("error");
+  } finally {
+    $("emailBtn").disabled = false;
+  }
+};
 $("copy").onclick = () => { $("shareUrl").select(); navigator.clipboard?.writeText($("shareUrl").value); $("copy").textContent = "Copied"; };
 
 // Reopen an existing quote from the URL.

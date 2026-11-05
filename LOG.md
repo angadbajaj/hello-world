@@ -122,3 +122,17 @@ Totals labels sit too close together in the mobile editor.
 Tests: 27/27 pass (new: reset flow incl. enumeration-safety, single use and session revocation; numeric validation; CSP; generic AI errors). Playwright: checklist progress + forgot → email link → new password → reused-link error at 390px and 1280px with no console errors. All earlier flows (days 2–6) still pass under the CSP.
 
 **Next (Day 8):** automatic follow-ups for unopened/unanswered quotes.
+
+## 2026-11-05: Day 8, follow-ups and emailing quotes ("win the job")
+**Shipped**
+- **Email quote** (all plans): a customer email field on the quote form, plus "Email quote" after saving. It goes out as "Smith Plumbing via QuoteSmith", replies go straight to the contractor, and resending within 10 minutes is blocked. Before this, contractors had to copy the link and text it themselves.
+- **Automatic follow-ups** (Pro, `src/followups.js`, every 15 minutes): one email to the contractor when a quote hasn't been opened after 2 days ("It may be in spam, a quick call usually gets it seen"), and one when it was opened but not answered after 3 days ("this is the best moment to call"). If the contractor opts in and the quote has the customer's email, the customer gets **one** friendly reminder from the contractor, never more. Quotes older than 30 days are left alone. In production it only runs once `APP_URL` is set, so links are never broken.
+- **Follow-up badges** on the dashboard for every plan ("Follow up: not opened yet / opened, no answer"). Free users see who to chase; Pro chases for them.
+- **Privacy**: the customer's email and the follow-up bookkeeping are stripped from the public quote.
+- **Positioning**: landing hero is now "Win more of the jobs you quote."; Free/Pro copy updated to match what exists.
+- Tests: 31/31 pass (new: follow-up rules with a controlled clock: timing, one-time nudges, the single customer reminder, free/opt-out/no-email/stale cases; email-quote auth, rate limit, sender/reply-to and privacy). Playwright run of Pro opt-in → quote with customer email → Email quote → dashboard follow-up badge at 390px and 1280px with no console errors; all earlier flows still pass.
+
+**Learned**
+- Emailing the quote straight from QuoteSmith is the missing half of "speed to quote". It also means we can see whether the customer received it, which is what makes follow-ups possible.
+
+**Next:** the final scheduled run writes the week-in-review and turns off the nightly schedule.

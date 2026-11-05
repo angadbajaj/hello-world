@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { startServer } from "./helpers.js";
 
 let server;
-test.before(async () => { server = await startServer({ FREE_QUOTES_PER_MONTH: "50" }); });
+test.before(async () => { server = await startServer({ FREE_QUOTES_PER_MONTH: "50", AUTH_ATTEMPTS_PER_15MIN: "100" }); });
 test.after(() => server.stop());
 
 const NOTES = { notes: "Replace kitchen tap, shutoff valve seized, 2 hours", customerName: "Jane" };
@@ -141,4 +141,33 @@ test("photos: validated, capped at three, and enough on their own", async () => 
   assert.equal(q.input.photoCount, 3);
   assert.equal(q.input.notes, "(See photos.)");
   assert.ok(!JSON.stringify(q).includes("/9j/"), "photo data must not be stored");
+});
+
+test("emailing a quote to the customer", async () => {
+  const { c } = await account("send@example.com");
+  await c("/api/me/profile", { method: "PUT", body: { businessName: "Send Plumbing", email: "office@send.example.com" } });
+  assert.equal((await c("/api/quotes", { method: "POST", body: { ...NOTES, customerEmail: "not-an-email" } })).status, 400);
+  const draft = (await c("/api/quotes", { method: "POST", body: { ...NOTES, customerEmail: "jane@example.com" } })).body;
+  assert.equal((await c(`/api/quotes/${draft.id}/email`, { method: "POST" })).status, 400, "drafts can't be emailed");
+
+  const sent = (await c(`/api/quotes/${draft.id}`, { method: "PUT", body: { quote: draft.quote } })).body;
+  assert.ok(sent.sentAt);
+  assert.equal((await server.client()(`/api/quotes/${draft.id}/email`, { method: "POST" })).status, 401);
+  const other = await account("send-other@example.com");
+  assert.equal((await other.c(`/api/quotes/${draft.id}/email`, { method: "POST" })).status, 404);
+
+  const r = await c(`/api/quotes/${draft.id}/email`, { method: "POST" });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.emailedAt);
+  await wait(100);
+  const mail = outbox().filter((m) => m.to === "jane@example.com").at(-1);
+  assert.equal(mail.subject, "Your quote from Send Plumbing (#1001)");
+  assert.equal(mail.replyTo, "office@send.example.com");
+  assert.ok(mail.text.includes(`/q/${draft.id}`));
+  assert.equal((await c(`/api/quotes/${draft.id}/email`, { method: "POST" })).status, 429, "no rapid resends");
+
+  // The customer's email address is not exposed on the public quote.
+  const pub = (await server.client()(`/api/q/${draft.id}`)).body;
+  assert.equal(pub.input.customerEmail, undefined);
+  assert.equal(pub.emailedAt, undefined);
 });

@@ -28,6 +28,8 @@ If you leave out the key, it runs in demo mode with a sample quote.
 | `STRIPE_WEBHOOK_SECRET` | none | Signing secret for `/api/stripe/webhook` |
 | `STRIPE_TRIAL_DAYS` | `0` | Free trial length on new subscriptions |
 | `RESEND_API_KEY` | none | Sends contractor email alerts via Resend (otherwise written to `DATA_DIR/outbox.log`) |
+| `FOLLOWUP_INTERVAL_MS` | `900000` | How often the Pro follow-up check runs (needs `APP_URL` in production) |
+| `AUTH_ATTEMPTS_PER_15MIN` | `10` | Login/signup/reset attempts per IP |
 | `EMAIL_FROM` | `QuoteSmith <alerts@quotesmith.app>` | Sender address (must be a domain verified in Resend) |
 
 Requires Node 22.13+ (uses the built-in `node:sqlite`). Data is stored in `DATA_DIR/quotesmith.db`.
@@ -58,7 +60,8 @@ Until these are set, the app runs normally and paid plans show as "coming soon".
 - `src/store.js`: SQLite storage (users, sessions, quotes)
 - `src/billing.js`: Stripe Checkout, Customer Portal, webhook → plan
 - `src/pdf.js`: server-side quote PDFs (pdfkit)
-- `src/notify.js`: contractor email alerts (Resend, or a local outbox file)
+- `src/notify.js`: emails: contractor alerts, quotes and reminders to customers, password reset (Resend, or a local outbox file)
+- `src/followups.js`: Pro follow-up rules (nudge after 2 days unopened / 3 days unanswered)
 - `public/`: landing page (`index.html`), quote builder (`app.html`), customer view (`quote.html`), `login.html`, `dashboard.html`
 - `evals/`: quote-quality cases and checks (`npm run eval`)
 - `test/`: `npm test` runs the unit tests plus API tests against a real server
