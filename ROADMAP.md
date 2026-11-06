@@ -47,6 +47,9 @@ gets a link they can accept on their phone.
 3. **Price stays at $19/mo Pro** for now. It sits between the $8 AI apps and the $50+ suites, and is justified by measurable wins (the dashboard's win rate and $ won).
 4. **Pivot signal to watch after launch:** if contractors use it to write quotes but rarely send the customer link, the follow-up/acceptance loop isn't valued. Then narrow to one trade where we can win on trade-specific pricing, or move to the adjacent "AI follow-up/booking assistant for trades" idea.
 
+## Status (Nov 6)
+Week 1 is complete. The nightly schedule has ended; see the week-in-review at the bottom of LOG.md. Week 2 isn't scheduled.
+
 ## Week 2 plan (proposed)
 - Stripe Connect deposits (platform fee), replacing "paste your own payment link"
 - Quote → invoice in one tap after the job

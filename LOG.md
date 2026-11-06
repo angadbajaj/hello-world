@@ -136,3 +136,35 @@ Tests: 27/27 pass (new: reset flow incl. enumeration-safety, single use and sess
 - Emailing the quote straight from QuoteSmith is the missing half of "speed to quote". It also means we can see whether the customer received it, which is what makes follow-ups possible.
 
 **Next:** the final scheduled run writes the week-in-review and turns off the nightly schedule.
+
+## 2026-11-06: Week 1 in review
+**Where it stands:** QuoteSmith is a complete, deployable SaaS for tradespeople, but it hasn't been deployed or tested with real AI yet. 8 commits, ~5,100 lines including tests and docs, 31 automated tests passing, and every user flow driven in a real browser at phone and desktop widths each night.
+
+**What exists**
+- **Core:** notes and/or job photos → AI-written itemized quote (rates, markup, tax, deposit, scope, exclusions, terms, questions for the client) → editor → saved price book reused by the AI.
+- **Winning the job:** email the quote from the contractor's business name or share a link; the customer views it on their phone and accepts with their name or declines; the contractor gets accept/decline emails; a "Pay deposit" button appears after acceptance; and the dashboard tracks status, follow-up flags, win rate and $ won.
+- **Pro ($19/mo):** unlimited quotes, "they just opened it" alerts, automatic follow-ups plus one optional customer reminder, logo on quotes and PDFs, no QuoteSmith branding.
+- **Business plumbing:** accounts, password reset, Stripe Checkout/Portal/webhooks, free-tier limits, PDFs, quote numbers, first-run checklist.
+- **Getting found:** 8 trade quote-template pages, sitemap and robots rules, and a landing page positioned on "win more of the jobs you quote".
+- **Ops:** Dockerfile, Render Blueprint with a persistent disk, DEPLOY.md, LAUNCH.md, security headers and CSP, graceful shutdown, and a 16-case AI quality eval (`npm run eval`).
+
+**Decisions that shaped it**
+1. Let people try it with no signup, but require an account to send. The signup happens at the moment of value.
+2. Never sell what isn't built: Crew stays "coming soon", and pricing copy was rewritten each time features changed.
+3. Free quotes carry "Made with QuoteSmith", which turns each one into free distribution.
+4. **Reposition (Day 7):** AI quote writing is crowded and cheap (many 2026 apps from ~$8/mo; Joist ~$10–32). The defensible value is what happens *after* sending (acceptance, alerts, follow-ups, deposits), so that's what we now sell and build.
+
+**Honest gaps**
+- **Real AI quality is unmeasured.** There's been no API key all week, so every quote in testing was the built-in sample. This is the biggest unknown.
+- **Not deployed:** the container image was never built for real (registries blocked here), though its exact runtime was reproduced and tested.
+- **No real users yet**, and no outreach, as instructed.
+- No email verification at signup; Crew/multi-user isn't built; deposits use the contractor's own payment link rather than Stripe Connect.
+
+**Recommended next steps, in order**
+1. Founder: deploy (DEPLOY.md), add the Anthropic key, run `npm run eval`, and try it on your phone. About an hour in total.
+2. Fix whatever the eval and your own use reveal in quote quality before anyone else sees it.
+3. Resend + Stripe (test mode → live) + Terms/Privacy, per LAUNCH.md.
+4. Then put it in front of 5–10 real contractors (your call, when you're ready) and watch one number: **what share of sent quotes get viewed and accepted.**
+5. Week 2 build candidates (ROADMAP.md): Stripe Connect deposits (a platform fee as a second revenue stream), quote → invoice, an admin metrics page.
+
+The nightly schedule ends here. To keep building, start a new session or ask for a new schedule.
